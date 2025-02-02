@@ -31,11 +31,7 @@ class Token:
         try:
             token = token.replace("Bearer ", "")
 
-            print("Decoding token:", token)
-
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-
-            print("Decoded Payload:", payload)
             return payload
 
         except jwt.ExpiredSignatureError as e:

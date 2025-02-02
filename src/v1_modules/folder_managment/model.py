@@ -19,6 +19,8 @@ class Folder(Base):
     owner = relationship("User", back_populates="folders")
     files = relationship("File", back_populates="folder")
     permissions = relationship("UserFolderPermission", back_populates="folder")
+    parent_folder = relationship("Folder", remote_side=[id], back_populates="subfolders")
+    subfolders = relationship("Folder", back_populates="parent_folder")
 
 class File(Base):
     __tablename__ = 'files'
@@ -29,7 +31,7 @@ class File(Base):
     folder_id = Column(UUID(as_uuid=True), ForeignKey('folders.id'), nullable=False)
     uploaded_by_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
-    file_type = Column(String(50), nullable=True)
+    file_type = Column(String(100), nullable=True)
     file_size = Column(BigInteger, nullable=True)
 
     folder = relationship("Folder", back_populates="files")

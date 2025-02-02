@@ -8,12 +8,16 @@ class Hasher:
     @staticmethod
     def verify_password(plain_password, hashed_password):
         """
-        This method verify the plain password and hashed password.
+        This method verifies the plain password and hashed password.
         :param plain_password: plain password
         :param hashed_password: hashed password
         :return: True if verify else False
         """
-        return bcrypt.checkpw(plain_password.strip().encode("utf-8"), hashed_password.encode("utf-8"))
+        try:
+            return bcrypt.checkpw(plain_password.strip().encode("utf-8"), hashed_password.encode("utf-8"))
+        except Exception as e:
+            print(f"Error verifying password: {e}")
+            return False
 
     @staticmethod
     def hash_password(password):
@@ -22,4 +26,8 @@ class Hasher:
         :param password: password
         :return: hashed password
         """
-        return bcrypt.hashpw(password.strip().encode("utf-8"), bcrypt.gensalt(rounds=4))
+        try:
+            return bcrypt.hashpw(password.strip().encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
+        except Exception as e:
+            print(f"Error hashing password: {e}")
+            raise

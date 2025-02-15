@@ -3,13 +3,13 @@ import os
 from sqlalchemy import select, and_
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, UploadFile
+from starlette import status
 
 from src.config.logger import logger
-from src.utills.response import Response
 from src.v1_modules.auth.utilities import get_admin_user
 from src.v1_modules.folder_managment.folder_manager import get_storage_manager
-from src.v1_modules.folder_managment.model import Folder, UserFolderPermission, File
-from src.v1_modules.folder_managment.schema import  FolderResponse
+from src.v1_modules.folder_managment.model import Folder, UserFolderPermission, File, UserFilePermission
+from src.v1_modules.folder_managment.schema import FolderResponse, FileResponse
 from src.v1_modules.folder_managment.utilities import get_folder_with_contents
 
 
@@ -25,6 +25,36 @@ class FolderService:
         storage_manager = get_storage_manager()
 
         try:
+            # Check if parent_folder_id is provided
+            if folder.parent_folder_id:
+                # Fetch the parent folder
+                parent_folder_query = select(Folder).where(Folder.id == folder.parent_folder_id)
+                parent_folder_result = await db.execute(parent_folder_query)
+                parent_folder = parent_folder_result.scalar_one_or_none()
+
+                if not parent_folder:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Parent folder not found"
+                    )
+
+                # Check if the current user owns the parent folder or has permission to create subfolders
+                permission_query = select(UserFolderPermission).where(
+                    and_(
+                        UserFolderPermission.folder_id == parent_folder.id,
+                        UserFolderPermission.user_id == current_user.id,
+                        UserFolderPermission.can_create == True
+                    )
+                )
+                permission_result = await db.execute(permission_query)
+                permission = permission_result.scalar_one_or_none()
+
+                if not permission and parent_folder.owner_id != current_user.id:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Insufficient permissions to create a subfolder in this parent folder"
+                    )
+
             # Check for duplicate folder name logic remains the same
             base_name = folder.name
             suffix = 1
@@ -63,14 +93,20 @@ class FolderService:
             except Exception as e:
                 logger.error(f"Storage creation failed: {str(e)}")
                 await db.rollback()
-                raise
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Storage creation failed: {str(e)}"
+                )
 
             admin_user = await get_admin_user(db)
             if not admin_user:
                 logger.error("Admin user not found")
                 await storage_manager.delete_folder(new_folder.name)
                 await db.rollback()
-                raise ValueError("Admin user not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Admin user not found"
+                )
 
             admin_permission = UserFolderPermission(
                 user_id=admin_user.id,
@@ -113,15 +149,19 @@ class FolderService:
             logger.error(f"Database error: {str(e)}")
             await db.rollback()
             raise HTTPException(
-                status_code=500,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Database error occurred: {str(e)}"
             )
+
+        except HTTPException as e:
+            # Re-raise HTTPException to return the error response
+            raise e
 
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
             await db.rollback()
             raise HTTPException(
-                status_code=500,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="An unexpected error occurred"
             )
         finally:
@@ -132,44 +172,112 @@ class FolderService:
                     logger.error(f"Failed to clean up storage folder: {str(e)}")
 
     @staticmethod
-    async def get_accessible_folders(db, user_id):
+    async def get_accessible_folders_and_files(db, user_id) :
         """
-        Retrieve all folders that a user has permission to view.
+        Retrieve all folders and files that a user has permission to view.
         """
-        query = select(UserFolderPermission).where(UserFolderPermission.user_id == user_id)
-        result = await db.execute(query)
-        permissions = result.scalars().all()
+        # Fetch folder permissions
+        folder_permissions_query = select(UserFolderPermission).where(UserFolderPermission.user_id == user_id)
+        folder_permissions_result = await db.execute(folder_permissions_query)
+        folder_permissions = folder_permissions_result.scalars().all()
+
+        # Fetch file permissions
+        file_permissions_query = select(UserFilePermission).where(UserFilePermission.user_id == user_id)
+        file_permissions_result = await db.execute(file_permissions_query)
+        file_permissions = file_permissions_result.scalars().all()
 
         accessible_folders = []
-        for permission in permissions:
+        accessible_files = []
+
+        # Process folder permissions
+        for permission in folder_permissions:
             if permission.can_view:
                 folder = await get_folder_with_contents(db, permission.folder_id)
                 if folder:
                     accessible_folders.append(folder)
 
-        return [FolderResponse.from_orm(folder) for folder in accessible_folders]
+        # Process file permissions
+        for permission in file_permissions:
+            if permission.can_view:
+                file_query = select(File).where(File.id == permission.file_id)
+                file_result = await db.execute(file_query)
+                file = file_result.scalar_one_or_none()
+                if file:
+                    accessible_files.append(file)
+
+        breakpoint()
+
+        # Convert folders and files to response models
+        folder_responses = [FolderResponse.from_orm(folder) for folder in accessible_folders]
+        file_responses = [FileResponse.from_orm(file) for file in accessible_files]
+
+        return folder_responses, file_responses
 
 class FileService:
     @staticmethod
     async def upload_file(
         db,
         folder_id,
-        file: UploadFile,
+        file,
         user_id
     ) -> dict:
         """
-        Upload a file to a specific folder.
-
-        Args:
-            db: AsyncSession - The database session.
-            folder_id: UUID - The ID of the folder where the file will be uploaded.
-            file: UploadFile - The file to upload.
-            user_id: UUID - The ID of the user uploading the file.
-
-        Returns:
-            dict - A success message.
+        Upload a file to a specific folder or a default folder if no folder_id is provided.
         """
         try:
+            # If folder_id is None, upload to a default folder (e.g., user's root folder)
+            if folder_id is None:
+                default_folder_name = f"user_{user_id}_root"
+                folder_query = select(Folder).where(
+                    and_(
+                        Folder.name == default_folder_name,
+                        Folder.owner_id == user_id
+                    )
+                )
+                folder_result = await db.execute(folder_query)
+                folder = folder_result.scalar_one_or_none()
+
+                # If the default folder doesn't exist, create it
+                if not folder:
+                    folder = Folder(
+                        name=default_folder_name,
+                        owner_id=user_id,
+                        parent_folder_id=None
+                    )
+                    db.add(folder)
+                    await db.commit()
+                    await db.refresh(folder)
+
+                folder_id = folder.id
+
+            # Check if the folder exists
+            folder_query = select(Folder).where(Folder.id == folder_id)
+            folder_result = await db.execute(folder_query)
+            folder = folder_result.scalar_one_or_none()
+
+            if not folder:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Folder not found"
+                )
+
+            # Check if the user has permission to upload files to the folder
+            permission_query = select(UserFolderPermission).where(
+                and_(
+                    UserFolderPermission.folder_id == folder_id,
+                    UserFolderPermission.user_id == user_id,
+                    UserFolderPermission.can_create == True
+                )
+            )
+            permission_result = await db.execute(permission_query)
+            permission = permission_result.scalar_one_or_none()
+
+            if not permission and folder.owner_id != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Insufficient permissions to upload files to this folder"
+                )
+
             # Save file to storage
             file_path = f"storage/{folder_id}/{file.filename}"
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -189,9 +297,362 @@ class FileService:
             )
             db.add(new_file)
             await db.commit()
+            await db.refresh(new_file)
+
+            # Create file permissions for the owner
+            owner_permission = UserFilePermission(
+                user_id=user_id,
+                file_id=new_file.id,
+                can_view=True,
+                can_edit=True,
+                can_delete=True,
+                can_share=True
+            )
+            db.add(owner_permission)
+
+            # Create file permissions for the admin
+            admin_user = await get_admin_user(db)
+            if admin_user:
+                admin_permission = UserFilePermission(
+                    user_id=admin_user.id,
+                    file_id=new_file.id,
+                    can_view=True,
+                    can_edit=True,
+                    can_delete=True,
+                    can_share=True
+                )
+                db.add(admin_permission)
+
+            await db.commit()
 
             logger.info(f"File '{file.filename}' uploaded successfully to folder '{folder_id}' by user '{user_id}'")
             return {"message": "File uploaded successfully"}
+
+        except HTTPException as e:
+            raise e
+
         except Exception as e:
             logger.error(f"Error uploading file: {str(e)}")
-            raise HTTPException(status_code=500, detail="Failed to upload file")
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to upload file"
+            )
+
+
+from uuid import UUID
+from sqlalchemy import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
+from sqlalchemy.orm import selectinload
+from starlette import status
+
+from src.v1_modules.folder_managment.model import (
+    Folder,
+    File,
+    UserFolderPermission,
+    UserFilePermission,
+    SharedItem
+)
+from src.config.logger import logger
+
+
+class SharingService:
+    @staticmethod
+    async def share_folder(
+            db: AsyncSession,
+            folder_id: UUID,
+            shared_by_id: UUID,
+            shared_with_id: UUID
+    ):
+        breakpoint()
+        """
+        Share a folder with another user.
+        """
+        try:
+            # Check if folder exists and get its details
+            folder_query = (
+                select(Folder)
+                .where(Folder.id == folder_id)
+                .options(
+                    selectinload(Folder.subfolders),
+                    selectinload(Folder.files)
+                )
+            )
+            result = await db.execute(folder_query)
+            folder = result.scalar_one_or_none()
+
+            if not folder:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Folder not found"
+                )
+
+            # Check if sharer has permission to share
+            permission_query = select(UserFolderPermission).where(
+                and_(
+                    UserFolderPermission.folder_id == folder_id,
+                    UserFolderPermission.user_id == shared_by_id,
+                    UserFolderPermission.can_share == True
+                )
+            )
+            permission_result = await db.execute(permission_query)
+            permission = permission_result.scalar_one_or_none()
+
+            if not permission and folder.owner_id != shared_by_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have permission to share this folder"
+                )
+
+            # Create sharing record
+            shared_item = SharedItem(
+                item_type="folder",
+                item_id=folder_id,
+                shared_by=shared_by_id,
+                shared_with=shared_with_id,
+                share_type="full" if folder.parent_folder_id is None else "specific"
+            )
+            db.add(shared_item)
+
+            # Create folder permission for shared user
+            folder_permission = UserFolderPermission(
+                user_id=shared_with_id,
+                folder_id=folder_id,
+                can_view=True,
+                can_edit=True,
+                can_delete=False,
+                can_create=True,
+                can_share=False
+            )
+            db.add(folder_permission)
+
+            # If it's a parent folder (no parent_folder_id), share all subfolders recursively
+            if folder.parent_folder_id is None:
+                await SharingService._share_subfolders_recursively(
+                    db,
+                    folder,
+                    shared_with_id
+                )
+
+            # Share all files within the folder
+            for file in folder.files:
+                file_permission = UserFilePermission(
+                    user_id=shared_with_id,
+                    file_id=file.id,
+                    can_view=True,
+                    can_edit=True,
+                    can_delete=False,
+                    can_share=False
+                )
+                db.add(file_permission)
+
+            await db.commit()
+            return {"message": "Folder shared successfully"}
+
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Error sharing folder: {str(e)}")
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to share folder: {str(e)}"
+            )
+
+    @staticmethod
+    async def _share_subfolders_recursively(
+            db: AsyncSession,
+            folder: Folder,
+            shared_with_id: UUID
+    ):
+        """
+        Recursively share all subfolders and their contents.
+        """
+        for subfolder in folder.subfolders:
+            # Create permission for subfolder
+            subfolder_permission = UserFolderPermission(
+                user_id=shared_with_id,
+                folder_id=subfolder.id,
+                can_view=True,
+                can_edit=True,
+                can_delete=False,
+                can_create=True,
+                can_share=False
+            )
+            db.add(subfolder_permission)
+
+            # Share files in subfolder
+            for file in subfolder.files:
+                file_permission = UserFilePermission(
+                    user_id=shared_with_id,
+                    file_id=file.id,
+                    can_view=True,
+                    can_edit=True,
+                    can_delete=False,
+                    can_share=False
+                )
+                db.add(file_permission)
+
+            # Recursively process nested subfolders
+            await SharingService._share_subfolders_recursively(
+                db,
+                subfolder,
+                shared_with_id
+            )
+
+    @staticmethod
+    async def share_file(
+            db: AsyncSession,
+            file_id: UUID,
+            shared_by_id: UUID,
+            shared_with_id: UUID
+    ):
+        """
+        Share a specific file with another user.
+        """
+        try:
+            # Check if file exists
+            file_query = select(File).where(File.id == file_id)
+            result = await db.execute(file_query)
+            file = result.scalar_one_or_none()
+
+            if not file:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="File not found"
+                )
+
+            # Check if sharer has permission to share
+            permission_query = select(UserFilePermission).where(
+                and_(
+                    UserFilePermission.file_id == file_id,
+                    UserFilePermission.user_id == shared_by_id,
+                    UserFilePermission.can_share == True
+                )
+            )
+            permission_result = await db.execute(permission_query)
+            permission = permission_result.scalar_one_or_none()
+
+            if not permission and file.uploaded_by_id != shared_by_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have permission to share this file"
+                )
+
+            # Create sharing record
+            shared_item = SharedItem(
+                item_type="file",
+                item_id=file_id,
+                shared_by=shared_by_id,
+                shared_with=shared_with_id,
+                share_type="specific"
+            )
+            db.add(shared_item)
+
+            # Create file permission for shared user
+            file_permission = UserFilePermission(
+                user_id=shared_with_id,
+                file_id=file_id,
+                can_view=True,
+                can_edit=True,
+                can_delete=False,
+                can_share=False
+            )
+            db.add(file_permission)
+
+            await db.commit()
+            return {"message": "File shared successfully"}
+
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Error sharing file: {str(e)}")
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to share file: {str(e)}"
+            )
+
+    @staticmethod
+    async def revoke_sharing(
+            db: AsyncSession,
+            item_type: str,
+            item_id: UUID,
+            shared_by_id: UUID,
+            shared_with_id: UUID
+    ):
+        """
+        Revoke sharing permissions for a file or folder.
+        """
+        try:
+            # Delete sharing record
+            sharing_query = select(SharedItem).where(
+                and_(
+                    SharedItem.item_type == item_type,
+                    SharedItem.item_id == item_id,
+                    SharedItem.shared_by == shared_by_id,
+                    SharedItem.shared_with == shared_with_id
+                )
+            )
+            result = await db.execute(sharing_query)
+            shared_item = result.scalar_one_or_none()
+
+            if not shared_item:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Sharing record not found"
+                )
+
+            await db.delete(shared_item)
+
+            # Remove permissions based on item type
+            if item_type == "folder":
+                # Remove folder permissions
+                folder_query = select(UserFolderPermission).where(
+                    and_(
+                        UserFolderPermission.folder_id == item_id,
+                        UserFolderPermission.user_id == shared_with_id
+                    )
+                )
+                result = await db.execute(folder_query)
+                folder_permission = result.scalar_one_or_none()
+
+                if folder_permission:
+                    await db.delete(folder_permission)
+
+                    # If it was a parent folder, remove all subfolder permissions
+                    folder = await db.get(Folder, item_id)
+                    if folder and folder.parent_folder_id is None:
+                        await SharingService._revoke_subfolder_permissions(
+                            db,
+                            folder,
+                            shared_with_id
+                        )
+
+            else:  # file
+                # Remove file permissions
+                file_query = select(UserFilePermission).where(
+                    and_(
+                        UserFilePermission.file_id == item_id,
+                        UserFilePermission.user_id == shared_with_id
+                    )
+                )
+                result = await db.execute(file_query)
+                file_permission = result.scalar_one_or_none()
+
+                if file_permission:
+                    await db.delete(file_permission)
+
+            await db.commit()
+            return {"message": f"{item_type.capitalize()} sharing revoked successfully"}
+
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Error revoking sharing: {str(e)}")
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to revoke sharing: {str(e)}"
+            )

@@ -5,10 +5,9 @@ from uuid import UUID
 from typing import Optional, List
 
 from src.v1_modules.folder_managment.model import Folder, File
-from src.v1_modules.folder_managment.schema import FolderResponse, FileResponse
 
 
-async def get_folder_with_contents(db: AsyncSession, folder_id: UUID) -> Optional[Folder]:
+async def get_folder_with_contents(db: AsyncSession, folder_id: UUID) -> Optional[dict]:
     """
     Recursively fetch a folder and all its contents (files and subfolders).
     """
@@ -17,28 +16,32 @@ async def get_folder_with_contents(db: AsyncSession, folder_id: UUID) -> Optiona
         .where(Folder.id == folder_id)
         .options(
             selectinload(Folder.files),
-            selectinload(Folder.permissions),
-            selectinload(Folder.subfolders), 
+            selectinload(Folder.owner),
+            selectinload(Folder.subfolders),
         )
     )
-
     result = await db.execute(query)
     folder = result.scalar_one_or_none()
-
     if not folder:
         return None
 
     # Recursively fetch subfolder contents
-    subfolders_query = select(Folder).where(Folder.parent_folder_id == folder_id)
-    subfolders_result = await db.execute(subfolders_query)
-    subfolders = subfolders_result.scalars().all()
+    subfolders = []
+    for subfolder in folder.subfolders:
+        subfolder_data = await get_folder_with_contents(db, subfolder.id)
+        if subfolder_data:
+            subfolders.append(subfolder_data)
 
-    # Recursively get contents of each subfolder
-    folder.subfolders = [
-        await get_folder_with_contents(db, subfolder.id) for subfolder in subfolders
-    ]
-
-    return folder
+    # Organize folder data with additional required fields
+    folder_data = {
+        "id": folder.id,
+        "name": folder.name,
+        "files": [{"id": file.id, "filename": file.filename} for file in folder.files],
+        "subfolders": subfolders,
+        "owner_id": folder.owner.id,  # Add owner_id
+        "created_at": folder.created_at  # Add created_at
+    }
+    return folder_data
 
 async def get_root_folders(db: AsyncSession, user_id: UUID) -> List[Folder]:
     """

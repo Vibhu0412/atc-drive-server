@@ -35,8 +35,10 @@ class File(Base):
     file_size = Column(BigInteger, nullable=True)
 
     folder = relationship("Folder", back_populates="files")
-
     uploaded_by = relationship("User", back_populates="files")
+
+    # Add this line to establish the relationship with UserFilePermission
+    permissions = relationship("UserFilePermission", back_populates="file")
 
 
 class UserFolderPermission(Base):
@@ -54,14 +56,27 @@ class UserFolderPermission(Base):
     user = relationship("User", back_populates="folder_permissions")
     folder = relationship("Folder", back_populates="permissions")
 
-
 class SharedItem(Base):
     __tablename__ = 'shared_items'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     item_type = Column(String(10), nullable=False)
-    item_id = Column(Integer, nullable=False)
+    item_id = Column(UUID(as_uuid=True), nullable=False)  # Changed from Integer to UUID
     shared_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     shared_with = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     shared_at = Column(DateTime(timezone=True), server_default=func.now())
     share_type = Column(String(20), nullable=True)
+
+class UserFilePermission(Base):
+    __tablename__ = 'user_file_permissions'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    file_id = Column(UUID(as_uuid=True), ForeignKey('files.id'), nullable=False)
+    can_view = Column(Boolean, default=False)
+    can_edit = Column(Boolean, default=False)
+    can_delete = Column(Boolean, default=False)
+    can_share = Column(Boolean, default=False)
+
+    user = relationship("User", back_populates="file_permissions")
+    file = relationship("File", back_populates="permissions")  # Ensure this line exists

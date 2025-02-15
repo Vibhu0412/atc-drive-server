@@ -26,16 +26,15 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(100), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
-    role_id = Column(UUID(as_uuid=True), ForeignKey('roles.id'), nullable=False)  # Changed to UUID
+    role_id = Column(UUID(as_uuid=True), ForeignKey('roles.id'), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
 
     role_details = relationship("Role", back_populates="users")
-
     folders = relationship("Folder", back_populates="owner")
     files = relationship("File", back_populates="uploaded_by")
     folder_permissions = relationship("UserFolderPermission", back_populates="user")
-
+    file_permissions = relationship("UserFilePermission", back_populates="user")  # Ensure this line exists
     @classmethod
     def get_by_id(cls, db_session, user_id: int):
         """

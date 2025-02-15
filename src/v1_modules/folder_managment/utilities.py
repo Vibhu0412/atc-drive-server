@@ -36,7 +36,17 @@ async def get_folder_with_contents(db: AsyncSession, folder_id: UUID) -> Optiona
     folder_data = {
         "id": folder.id,
         "name": folder.name,
-        "files": [{"id": file.id, "filename": file.filename} for file in folder.files],
+        "files": [
+            {
+                "id": file.id,
+                "filename": file.filename,
+                "file_path": file.file_path,  # Add file_path
+                "folder_id": file.folder_id,  # Add folder_id
+                "uploaded_by_id": file.uploaded_by_id,  # Add uploaded_by_id
+                "uploaded_at": file.uploaded_at  # Add uploaded_at
+            }
+            for file in folder.files
+        ],
         "subfolders": subfolders,
         "owner_id": folder.owner.id,  # Add owner_id
         "created_at": folder.created_at  # Add created_at

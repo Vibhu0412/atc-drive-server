@@ -1,24 +1,22 @@
+from enum import Enum
+from pydantic import  Field
+from uuid import UUID
+from pydantic import UUID4, validator,ConfigDict
 from datetime import datetime
 from typing import List, Optional
-from uuid import UUID
-from enum import Enum
-
-# Pydantic models for request/response
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel
 
 
 class PermissionType(str, Enum):
     EDITOR = "editor"
     VIEWER = "viewer"
 
+
 class FolderCreate(BaseModel):
     name: str
     parent_folder_id: Optional[UUID] = None
 
-from pydantic import BaseModel, ConfigDict
-from uuid import UUID
-from datetime import datetime
-from typing import List, Optional
+
 
 class FileResponse(BaseModel):
     id: UUID
@@ -29,6 +27,9 @@ class FileResponse(BaseModel):
     uploaded_at: datetime
     file_type: Optional[str] = None
     file_size: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class FolderResponse(BaseModel):
     id: UUID
@@ -41,18 +42,12 @@ class FolderResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-from pydantic import BaseModel
-from typing import Literal
+
 
 class ShareItemRequest(BaseModel):
-    item_type: Literal["file", "folder"]  # Type of item to share
-    item_id: UUID  # ID of the file or folder
-    shared_with_user_id: UUID  # ID of the user with whom the item is shared
-    share_type: Optional[str] = None
-
-from pydantic import BaseModel, UUID4, validator
-from typing import Optional, List
-from datetime import datetime
+    item_type: str = Field(..., description="Type of item to share. Must be 'file' or 'folder'.")
+    item_id: UUID = Field(..., description="ID of the item to share.")
+    shared_with_user_ids: List[UUID] = Field(..., description="List of user IDs with whom the item is being shared.")
 
 
 # Base Models
@@ -63,8 +58,6 @@ class UserBase(BaseModel):
 
     class Config:
         from_attributes = True
-
-
 
 
 class ShareBulkRequest(BaseModel):
@@ -170,3 +163,4 @@ class ExampleShareResponse(BaseModel):
         detail="Insufficient permissions to share this item",
         error_code="INSUFFICIENT_PERMISSIONS"
     )
+    model_config = ConfigDict(from_attributes=True)

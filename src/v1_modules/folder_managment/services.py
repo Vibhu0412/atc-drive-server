@@ -3,12 +3,13 @@ import os
 from sqlalchemy import select, and_
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, UploadFile
+from sqlalchemy.orm import selectinload
 from starlette import status
 
 from src.config.logger import logger
 from src.v1_modules.auth.utilities import get_admin_user
 from src.v1_modules.folder_managment.folder_manager import get_storage_manager
-from src.v1_modules.folder_managment.model import Folder, UserFolderPermission, File, UserFilePermission
+from src.v1_modules.folder_managment.model import Folder, UserFolderPermission, File, UserFilePermission, SharedItem
 from src.v1_modules.folder_managment.schema import FolderResponse, FileResponse
 from src.v1_modules.folder_managment.utilities import get_folder_with_contents
 
@@ -205,8 +206,6 @@ class FolderService:
                 if file:
                     accessible_files.append(file)
 
-        breakpoint()
-
         # Convert folders and files to response models
         folder_responses = [FolderResponse.from_orm(folder) for folder in accessible_folders]
         file_responses = [FileResponse.from_orm(file) for file in accessible_files]
@@ -220,9 +219,10 @@ class FileService:
         folder_id,
         file,
         user_id
-    ) -> dict:
+    ) -> FileResponse:
         """
         Upload a file to a specific folder or a default folder if no folder_id is provided.
+        Returns the uploaded file's details as a FileResponse object.
         """
         try:
             # If folder_id is None, upload to a default folder (e.g., user's root folder)
@@ -326,7 +326,18 @@ class FileService:
             await db.commit()
 
             logger.info(f"File '{file.filename}' uploaded successfully to folder '{folder_id}' by user '{user_id}'")
-            return {"message": "File uploaded successfully"}
+
+            # Return the uploaded file's details as a FileResponse object
+            return FileResponse(
+                id=new_file.id,
+                filename=new_file.filename,
+                file_path=new_file.file_path,
+                folder_id=new_file.folder_id,
+                uploaded_by_id=new_file.uploaded_by_id,
+                uploaded_at=new_file.uploaded_at,
+                file_type=new_file.file_type,
+                file_size=new_file.file_size
+            )
 
         except HTTPException as e:
             raise e
@@ -340,34 +351,18 @@ class FileService:
             )
 
 
-from uuid import UUID
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException
-from sqlalchemy.orm import selectinload
-from starlette import status
-
-from src.v1_modules.folder_managment.model import (
-    Folder,
-    File,
-    UserFolderPermission,
-    UserFilePermission,
-    SharedItem
-)
-from src.config.logger import logger
-
 
 class SharingService:
     @staticmethod
     async def share_folder(
-            db: AsyncSession,
-            folder_id: UUID,
-            shared_by_id: UUID,
-            shared_with_id: UUID
+            db,
+            folder_id,
+            shared_by_id,
+            shared_with_user_ids
     ):
-        breakpoint()
         """
-        Share a folder with another user.
+        Share a folder with multiple users.
+        Avoids duplicate sharing by checking if the folder is already shared with the user.
         """
         try:
             # Check if folder exists and get its details
@@ -405,50 +400,89 @@ class SharingService:
                     detail="You don't have permission to share this folder"
                 )
 
-            # Create sharing record
-            shared_item = SharedItem(
-                item_type="folder",
-                item_id=folder_id,
-                shared_by=shared_by_id,
-                shared_with=shared_with_id,
-                share_type="full" if folder.parent_folder_id is None else "specific"
-            )
-            db.add(shared_item)
-
-            # Create folder permission for shared user
-            folder_permission = UserFolderPermission(
-                user_id=shared_with_id,
-                folder_id=folder_id,
-                can_view=True,
-                can_edit=True,
-                can_delete=False,
-                can_create=True,
-                can_share=False
-            )
-            db.add(folder_permission)
-
-            # If it's a parent folder (no parent_folder_id), share all subfolders recursively
-            if folder.parent_folder_id is None:
-                await SharingService._share_subfolders_recursively(
-                    db,
-                    folder,
-                    shared_with_id
+            # Share with each user in the list
+            for shared_with_id in shared_with_user_ids:
+                # Check if the folder is already shared with the user
+                sharing_record_query = select(SharedItem).where(
+                    and_(
+                        SharedItem.item_type == "folder",
+                        SharedItem.item_id == folder_id,
+                        SharedItem.shared_with == shared_with_id
+                    )
                 )
+                sharing_record_result = await db.execute(sharing_record_query)
+                sharing_record = sharing_record_result.scalar_one_or_none()
 
-            # Share all files within the folder
-            for file in folder.files:
-                file_permission = UserFilePermission(
-                    user_id=shared_with_id,
-                    file_id=file.id,
-                    can_view=True,
-                    can_edit=True,
-                    can_delete=False,
-                    can_share=False
+                if sharing_record:
+                    continue
+
+                # Create sharing record
+                shared_item = SharedItem(
+                    item_type="folder",
+                    item_id=folder_id,
+                    shared_by=shared_by_id,
+                    shared_with=shared_with_id,
+                    share_type="full" if folder.parent_folder_id is None else "specific"
                 )
-                db.add(file_permission)
+                db.add(shared_item)
+
+                # Check if the user already has folder permissions
+                folder_permission_query = select(UserFolderPermission).where(
+                    and_(
+                        UserFolderPermission.folder_id == folder_id,
+                        UserFolderPermission.user_id == shared_with_id
+                    )
+                )
+                folder_permission_result = await db.execute(folder_permission_query)
+                folder_permission = folder_permission_result.scalar_one_or_none()
+
+                if not folder_permission:
+                    # Create folder permission for shared user
+                    folder_permission = UserFolderPermission(
+                        user_id=shared_with_id,
+                        folder_id=folder_id,
+                        can_view=True,
+                        can_edit=True,
+                        can_delete=False,
+                        can_create=True,
+                        can_share=False
+                    )
+                    db.add(folder_permission)
+
+                # If it's a parent folder (no parent_folder_id), share all subfolders recursively
+                if folder.parent_folder_id is None:
+                    await SharingService._share_subfolders_recursively(
+                        db,
+                        folder,
+                        shared_with_id
+                    )
+
+                # Share all files within the folder
+                for file in folder.files:
+                    # Check if the user already has file permissions
+                    file_permission_query = select(UserFilePermission).where(
+                        and_(
+                            UserFilePermission.file_id == file.id,
+                            UserFilePermission.user_id == shared_with_id
+                        )
+                    )
+                    file_permission_result = await db.execute(file_permission_query)
+                    file_permission = file_permission_result.scalar_one_or_none()
+
+                    if not file_permission:
+                        # Create file permission for shared user
+                        file_permission = UserFilePermission(
+                            user_id=shared_with_id,
+                            file_id=file.id,
+                            can_view=True,
+                            can_edit=True,
+                            can_delete=False,
+                            can_share=False
+                        )
+                        db.add(file_permission)
 
             await db.commit()
-            return {"message": "Folder shared successfully"}
+            return {"message": "Folder shared successfully with all users"}
 
         except HTTPException as e:
             raise e
@@ -462,9 +496,9 @@ class SharingService:
 
     @staticmethod
     async def _share_subfolders_recursively(
-            db: AsyncSession,
+            db,
             folder: Folder,
-            shared_with_id: UUID
+            shared_with_id
     ):
         """
         Recursively share all subfolders and their contents.
@@ -503,13 +537,13 @@ class SharingService:
 
     @staticmethod
     async def share_file(
-            db: AsyncSession,
-            file_id: UUID,
-            shared_by_id: UUID,
-            shared_with_id: UUID
+            db,
+            file_id,
+            shared_by_id,
+            shared_with_user_ids
     ):
         """
-        Share a specific file with another user.
+        Share a specific file with multiple users.
         """
         try:
             # Check if file exists
@@ -540,29 +574,44 @@ class SharingService:
                     detail="You don't have permission to share this file"
                 )
 
-            # Create sharing record
-            shared_item = SharedItem(
-                item_type="file",
-                item_id=file_id,
-                shared_by=shared_by_id,
-                shared_with=shared_with_id,
-                share_type="specific"
-            )
-            db.add(shared_item)
+            # Share with each user in the list
+            for shared_with_id in shared_with_user_ids:
+                sharing_record_query = select(SharedItem).where(
+                    and_(
+                        SharedItem.item_type == "file",
+                        SharedItem.item_id == file_id,
+                        SharedItem.shared_with == shared_with_id
+                    )
+                )
+                sharing_record_result = await db.execute(sharing_record_query)
+                sharing_record = sharing_record_result.scalar_one_or_none()
 
-            # Create file permission for shared user
-            file_permission = UserFilePermission(
-                user_id=shared_with_id,
-                file_id=file_id,
-                can_view=True,
-                can_edit=True,
-                can_delete=False,
-                can_share=False
-            )
-            db.add(file_permission)
+                if sharing_record:
+                    continue
+
+                # Create sharing record
+                shared_item = SharedItem(
+                    item_type="file",
+                    item_id=file_id,
+                    shared_by=shared_by_id,
+                    shared_with=shared_with_id,
+                    share_type="specific"
+                )
+                db.add(shared_item)
+
+                # Create file permission for shared user
+                file_permission = UserFilePermission(
+                    user_id=shared_with_id,
+                    file_id=file_id,
+                    can_view=True,
+                    can_edit=True,
+                    can_delete=False,
+                    can_share=False
+                )
+                db.add(file_permission)
 
             await db.commit()
-            return {"message": "File shared successfully"}
+            return {"message": "File shared successfully with all users"}
 
         except HTTPException as e:
             raise e
@@ -576,11 +625,11 @@ class SharingService:
 
     @staticmethod
     async def revoke_sharing(
-            db: AsyncSession,
+            db,
             item_type: str,
-            item_id: UUID,
-            shared_by_id: UUID,
-            shared_with_id: UUID
+            item_id,
+            shared_by_id,
+            shared_with_id
     ):
         """
         Revoke sharing permissions for a file or folder.

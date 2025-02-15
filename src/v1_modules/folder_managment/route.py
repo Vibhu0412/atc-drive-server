@@ -122,7 +122,7 @@ async def share_folder(
             db=db,
             folder_id=share_request.item_id,  # Corrected to match service parameters
             shared_by_id=current_user.id,
-            shared_with_id=share_request.shared_with_user_id  # Corrected field name
+            shared_with_user_ids=share_request.shared_with_user_ids  # Corrected field name
         )
         return ResponseBuilder.from_common_response(
             CommonResponses.success(data=result, message="Folder shared successfully")
@@ -136,30 +136,36 @@ async def share_folder(
         ).send_error_response()
 
 
-@folder_router.post("/file/{file_id}")
+@folder_router.post("/file/share")
 async def share_file(
-    file_id: UUID,
     share_request: ShareItemRequest,
     current_user: User = Depends(get_current_user_v2),
     db: AsyncSession = Depends(get_async_db)
 ):
     """Share a file with another user."""
     try:
-        # Verify file permission before sharing
-        if not await has_file_permission(db, current_user.id, file_id, "can_share"):
+        # Validate item type
+        if share_request.item_type != "file":
+            return ResponseBuilder.from_common_response(
+                CommonResponses.BAD_REQUEST("Invalid item type. Expected 'file'.")
+            ).send_error_response()
+
+        # Validate permissions before sharing
+        if not await has_file_permission(db, current_user.id, share_request.item_id, "can_share"):
             return ResponseBuilder.from_common_response(
                 CommonResponses.unauthorized()
             ).send_error_response()
 
         result = await SharingService.share_file(
             db=db,
-            file_id=file_id,
+            file_id=share_request.item_id,  # Corrected to match service parameters
             shared_by_id=current_user.id,
-            shared_with_id=share_request.shared_with_id
+            shared_with_user_ids=share_request.shared_with_user_ids  # Corrected field name
         )
         return ResponseBuilder.from_common_response(
             CommonResponses.success(data=result, message="File shared successfully")
         ).send_success_response()
+
     except Exception as e:
         return ResponseBuilder(
             status_code=ResponseStatus.INTERNAL_ERROR,

@@ -16,7 +16,14 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="ATC-Drive project")
 
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+    CORSMiddleware,
+    allow_origins=[
+        "http://65.2.96.95",
+        "http://ec2-65-2-96-95.ap-south-1.compute.amazonaws.com",
+        "http://localhost:9000",
+        "http://127.0.0.1:9000"
+    ],
+    allow_methods=["*"], allow_headers=["*"]
 )
 @app.get("/")
 def root():

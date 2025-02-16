@@ -45,10 +45,9 @@ class FolderResponse(BaseModel):
 
 
 class ShareItemRequest(BaseModel):
-    item_type: str = Field(..., description="Type of item to share. Must be 'file' or 'folder'.")
-    item_id: UUID = Field(..., description="ID of the item to share.")
-    shared_with_user_ids: List[UUID] = Field(..., description="List of user IDs with whom the item is being shared.")
-
+    item_type: str
+    item_id: UUID
+    shared_with_user_emails: List[str] = Field(..., description="List of user emails to share the item with")
 
 # Base Models
 class UserBase(BaseModel):

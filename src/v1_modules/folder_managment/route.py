@@ -1,6 +1,7 @@
 from typing import List, Optional
 from uuid import UUID
 from fastapi import HTTPException, APIRouter, Depends, UploadFile, File
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.dbConnections import get_async_db
@@ -112,6 +113,17 @@ async def share_folder(
                 CommonResponses.BAD_REQUEST("Invalid item type. Expected 'folder'.")
             ).send_error_response()
 
+        # Convert emails to user IDs
+        shared_with_user_ids = []
+        for email in share_request.shared_with_user_emails:
+            user = await db.execute(select(User).where(User.email == email))
+            user = user.scalar_one_or_none()
+            if not user:
+                return ResponseBuilder.from_common_response(
+                    CommonResponses.BAD_REQUEST(f"User with email {email} not found")
+                ).send_error_response()
+            shared_with_user_ids.append(user.id)
+
         # Validate permissions before sharing
         if not await has_folder_permission(db, current_user.id, share_request.item_id, "can_share"):
             return ResponseBuilder.from_common_response(
@@ -120,9 +132,9 @@ async def share_folder(
 
         result = await SharingService.share_folder(
             db=db,
-            folder_id=share_request.item_id,  # Corrected to match service parameters
+            folder_id=share_request.item_id,
             shared_by_id=current_user.id,
-            shared_with_user_ids=share_request.shared_with_user_ids  # Corrected field name
+            shared_with_user_ids=shared_with_user_ids
         )
         return ResponseBuilder.from_common_response(
             CommonResponses.success(data=result, message="Folder shared successfully")
@@ -150,6 +162,17 @@ async def share_file(
                 CommonResponses.BAD_REQUEST("Invalid item type. Expected 'file'.")
             ).send_error_response()
 
+        # Convert emails to user IDs
+        shared_with_user_ids = []
+        for email in share_request.shared_with_user_emails:
+            user = await db.execute(select(User).where(User.email == email))
+            user = user.scalar_one_or_none()
+            if not user:
+                return ResponseBuilder.from_common_response(
+                    CommonResponses.BAD_REQUEST(f"User with email {email} not found")
+                ).send_error_response()
+            shared_with_user_ids.append(user.id)
+
         # Validate permissions before sharing
         if not await has_file_permission(db, current_user.id, share_request.item_id, "can_share"):
             return ResponseBuilder.from_common_response(
@@ -158,9 +181,9 @@ async def share_file(
 
         result = await SharingService.share_file(
             db=db,
-            file_id=share_request.item_id,  # Corrected to match service parameters
+            file_id=share_request.item_id,
             shared_by_id=current_user.id,
-            shared_with_user_ids=share_request.shared_with_user_ids  # Corrected field name
+            shared_with_user_ids=shared_with_user_ids
         )
         return ResponseBuilder.from_common_response(
             CommonResponses.success(data=result, message="File shared successfully")

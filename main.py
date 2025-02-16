@@ -22,6 +22,7 @@ app.add_middleware(
         "http://ec2-65-2-96-95.ap-south-1.compute.amazonaws.com",
         "http://localhost:9000",
         "http://127.0.0.1:9000"
+        "http://65.2.96.95:9000"
     ],
     allow_methods=["*"], allow_headers=["*"]
 )

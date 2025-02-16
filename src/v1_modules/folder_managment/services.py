@@ -190,13 +190,13 @@ class FolderService:
 
             accessible_folders = []
             accessible_files = []
-            processed_folder_ids = set()  # Keep track of processed folders
+            processed_folder_ids = set()
 
             for permission in folder_permissions:
                 if permission.can_view and permission.folder_id not in processed_folder_ids:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:
-                        # Only add top-level folders (those without parents)
+                        # Check the folder model's parent_folder_id before conversion
                         if not folder.parent_folder_id:
                             accessible_folders.append(folder)
                         processed_folder_ids.add(folder.id)
@@ -209,12 +209,12 @@ class FolderService:
                     if file:
                         accessible_files.append(file)
 
+            # Convert to response models after all processing is done
             folder_responses = [FolderResponse.from_orm(folder) for folder in accessible_folders]
             file_responses = [FileResponse.from_orm(file) for file in accessible_files]
 
             return folder_responses, file_responses
         else:
-            # Admin logic remains the same but with the same duplication fix
             users_query = select(User)
             users_result = await db.execute(users_query)
             users = users_result.scalars().all()
@@ -236,12 +236,12 @@ class FolderService:
 
                 user_folders = []
                 user_files = []
-                processed_folder_ids = set()  # Keep track of processed folders
+                processed_folder_ids = set()
 
                 for permission in folder_permissions:
                     if permission.can_view and permission.folder_id not in processed_folder_ids:
                         folder = await get_folder_with_contents(db, permission.folder_id)
-                        if folder and not folder.parent_folder_id:  # Only add top-level folders
+                        if folder and not folder.parent_folder_id:  # Check the model's attribute
                             user_folders.append(folder)
                             processed_folder_ids.add(folder.id)
 
@@ -254,6 +254,7 @@ class FolderService:
                             user_files.append(file)
 
                 if user_folders or user_files:
+                    # Convert to response models after processing
                     user_resources[user.username] = {
                         "folders": [FolderResponse.from_orm(folder) for folder in user_folders],
                         "files": [FileResponse.from_orm(file) for file in user_files]

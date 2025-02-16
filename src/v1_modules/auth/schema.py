@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import List, Optional
 from pydantic import BaseModel, EmailStr, Field, validator
 from uuid import UUID
+from typing import Optional
+
 
 class RoleBase(BaseModel):
     id: UUID
@@ -106,3 +107,12 @@ class UserRegistrationResponse(BaseModel):
 class SuccessResponse(BaseModel):
     detail: UserRegistrationResponse
     meta: dict
+
+
+class UserResponseForGet(BaseModel):
+    id: UUID
+    username: str
+    email: str
+    role: RoleResponse
+    created_at: datetime
+    last_login: Optional[datetime] = None

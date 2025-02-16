@@ -1,16 +1,16 @@
 from datetime import timedelta, datetime
-from http.client import HTTPException
 from uuid import UUID
 
 import pytz
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.future import select
 from fastapi import status
-from sqlalchemy.sql.functions import current_user
+from sqlalchemy.orm import selectinload
 
 from src.v1_modules.auth.crud import get_role_by_user_id, get_user, get_user_role_from_token, get_current_user
 from src.v1_modules.auth.model import User, Role
-from src.v1_modules.auth.schema import LoginRequest, UserResponse, RoleResponse, LoginResponse, RegisterUserRequest
+from src.v1_modules.auth.schema import LoginRequest, UserResponse, RoleResponse, LoginResponse, RegisterUserRequest, \
+ UserResponseForGet
 from src.config.logger import logger
 from src.utills.response import Response
 from src.utills.toekn_utills import Token
@@ -152,47 +152,6 @@ async def get_all_roles(db) -> User:
         ).send_error_response()
 
 
-# async def register_user(db, request: RegisterUserRequest, token: str) -> dict:
-#     try:
-#         current_user = await get_current_user(db, token)
-#         user_role = await get_user_role_from_token(db, current_user)
-# 
-#         if user_role.name != "admin":
-#             return Response(
-#                 status_code=status.HTTP_403_FORBIDDEN,
-#                 message="Only admins can register users."
-#             ).send_error_response()
-# 
-#         hashed_password = hash.hash_password(request.password_hash)
-# 
-#         user_data = request.dict()
-#         user_data["password_hash"] = str(hashed_password)
-# 
-#         new_user = User(**user_data)
-# 
-#         db.add(new_user)
-#         await db.commit()
-# 
-#         response_data = {
-#             "username": new_user.username,
-#             "email": new_user.email,
-#             "role_id": str(new_user.role_id)
-#         }
-# 
-#         return Response(
-#             data=response_data,
-#             message="User registered successfully",
-#             status_code=status.HTTP_201_CREATED
-#         ).send_success_response()
-# 
-#     except Exception as e:
-#         await db.rollback()
-#         logger.error(f"User registration failed: {str(e)}")
-#         return Response(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             message=f"User registration failed: {str(e)}"
-#         ).send_error_response()
-
 async def register_user(db, request: RegisterUserRequest, user) -> dict:
     try:
         user_role = await get_user_role_from_token(db, user)
@@ -231,4 +190,54 @@ async def register_user(db, request: RegisterUserRequest, user) -> dict:
         return Response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             message=f"User registration failed: {str(e)}"
+        ).send_error_response()
+
+
+
+async def get_all_users(db):
+    """
+    Fetch all users along with their role details.
+    """
+    try:
+        logger.info("Fetching all users with role details")
+
+        # Query to fetch all users with role details
+        query = select(User).options(selectinload(User.role_details))
+        result = await db.execute(query)
+        users = result.scalars().all()
+
+        # Prepare the response data using Pydantic models
+        user_list = []
+        for user in users:
+            role_response = RoleResponse(
+                id=user.role_details.id,
+                name=user.role_details.name,
+                can_view=user.role_details.can_view,
+                can_edit=user.role_details.can_edit,
+                can_delete=user.role_details.can_delete,
+                can_create=user.role_details.can_create,
+                can_share=user.role_details.can_share,
+            )
+            user_response = UserResponseForGet(
+                id=user.id,
+                username=user.username,
+                email=user.email,
+                role=role_response,
+                created_at=user.created_at,
+                last_login=user.last_login,
+            )
+            user_list.append(user_response.dict())
+
+        logger.info("Users retrieved successfully")
+        return Response(
+            data=user_list,
+            message="Users retrieved successfully",
+            status_code=200
+        ).send_success_response()
+
+    except Exception as e:
+        logger.error(f"Failed to fetch users: {str(e)}")
+        return Response(
+            status_code=500,
+            message=f"Failed to fetch users: {str(e)}"
         ).send_error_response()

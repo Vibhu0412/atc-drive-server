@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 from fastapi import HTTPException, APIRouter, Depends, UploadFile, File
 from sqlalchemy import select

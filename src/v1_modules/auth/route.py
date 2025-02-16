@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import Depends, HTTPException, status, APIRouter, Security
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.v1_modules.auth.crud import  get_current_user_v2
 from src.v1_modules.auth.schema import UserDetailResponse, LoginRequest, RegisterUserRequest
 from src.v1_modules.auth.services import get_user_details_from_db, login_user, get_all_roles, \
-    register_user
+    register_user, get_all_users
 from src.db.dbConnections import get_async_db
 from uuid import UUID
 
@@ -38,14 +40,6 @@ async def fetch_roles(
     role_response = await get_all_roles(db)
     return role_response
 
-# @auth_router.post("/register")
-# async def register(
-#     registration_data: RegisterUserRequest,
-#     db: AsyncSession = Depends(get_async_db),
-#     token: str = Depends(oauth2_scheme),
-# ):
-#     return await register_user(db, registration_data, token)
-
 @auth_router.post("/register")
 async def register(
     registration_data: RegisterUserRequest,
@@ -53,3 +47,14 @@ async def register(
     user: dict = Security(get_current_user_v2)
 ):
     return await register_user(db, registration_data, user)
+
+@auth_router.get("/all/users")
+async def list_all_users(
+    db: AsyncSession = Depends(get_async_db),
+    user: dict = Security(get_current_user_v2)  # Authentication required
+):
+    """
+    Get a list of all users along with their role details.
+    Only authenticated users can access this route.
+    """
+    return await get_all_users(db)

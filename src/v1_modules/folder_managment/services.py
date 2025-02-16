@@ -179,7 +179,6 @@ class FolderService:
         Retrieve all folders and files that a user has permission to view.
         For admin users, groups items by username.
         """
-        breakpoint()
         if not is_admin:
             # Original logic for regular users
             folder_permissions_query = select(UserFolderPermission).where(UserFolderPermission.user_id == user_id)

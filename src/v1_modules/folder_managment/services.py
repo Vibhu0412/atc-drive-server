@@ -179,7 +179,9 @@ class FolderService:
         Retrieve all folders and files that a user has permission to view.
         For admin users, groups items by username.
         """
+        breakpoint()
         if not is_admin:
+            # Original logic for regular users
             folder_permissions_query = select(UserFolderPermission).where(UserFolderPermission.user_id == user_id)
             folder_permissions_result = await db.execute(folder_permissions_query)
             folder_permissions = folder_permissions_result.scalars().all()
@@ -190,16 +192,12 @@ class FolderService:
 
             accessible_folders = []
             accessible_files = []
-            processed_folder_ids = set()
 
             for permission in folder_permissions:
-                if permission.can_view and permission.folder_id not in processed_folder_ids:
+                if permission.can_view:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:
-                        # Only add folders that are not subfolders (i.e., parent_folder_id is None)
-                        if folder.parent_folder_id is None:
-                            accessible_folders.append(folder)
-                        processed_folder_ids.add(folder.id)
+                        accessible_folders.append(folder)
 
             for permission in file_permissions:
                 if permission.can_view:
@@ -209,12 +207,13 @@ class FolderService:
                     if file:
                         accessible_files.append(file)
 
-            # Convert to response models after all processing is done
             folder_responses = [FolderResponse.from_orm(folder) for folder in accessible_folders]
             file_responses = [FileResponse.from_orm(file) for file in accessible_files]
 
             return folder_responses, file_responses
         else:
+            # Admin logic - group by users
+            # Get all users
             users_query = select(User)
             users_result = await db.execute(users_query)
             users = users_result.scalars().all()
@@ -222,12 +221,14 @@ class FolderService:
             user_resources = {}
 
             for user in users:
+                # Get folders for this user
                 folder_permissions_query = select(UserFolderPermission).where(
                     UserFolderPermission.user_id == user.id
                 )
                 folder_permissions_result = await db.execute(folder_permissions_query)
                 folder_permissions = folder_permissions_result.scalars().all()
 
+                # Get files for this user
                 file_permissions_query = select(UserFilePermission).where(
                     UserFilePermission.user_id == user.id
                 )
@@ -236,14 +237,12 @@ class FolderService:
 
                 user_folders = []
                 user_files = []
-                processed_folder_ids = set()
 
                 for permission in folder_permissions:
-                    if permission.can_view and permission.folder_id not in processed_folder_ids:
+                    if permission.can_view:
                         folder = await get_folder_with_contents(db, permission.folder_id)
-                        if folder and folder.parent_folder_id is None:  # Only add top-level folders
+                        if folder:
                             user_folders.append(folder)
-                            processed_folder_ids.add(folder.id)
 
                 for permission in file_permissions:
                     if permission.can_view:
@@ -254,13 +253,13 @@ class FolderService:
                             user_files.append(file)
 
                 if user_folders or user_files:
-                    # Convert to response models after processing
                     user_resources[user.username] = {
                         "folders": [FolderResponse.from_orm(folder) for folder in user_folders],
                         "files": [FileResponse.from_orm(file) for file in user_files]
                     }
 
             return user_resources
+
 class FileService:
     @staticmethod
     async def upload_file(

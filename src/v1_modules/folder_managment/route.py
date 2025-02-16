@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.dbConnections import get_async_db
 from src.utills.response_v2 import ResponseBuilder, CommonResponses, ResponseStatus
-from src.v1_modules.auth.crud import get_current_user_v2
+from src.v1_modules.auth.crud import get_current_user_v2, get_user_role_from_token
 from src.v1_modules.auth.model import User
 from src.v1_modules.auth.utilities import get_admin_user, has_folder_permission, has_file_permission
 from src.v1_modules.folder_managment.schema import FolderCreate, FolderResponse, ShareItemRequest
@@ -38,14 +38,20 @@ async def create_folder(
         )
         return response.send_error_response()
 
+
 @folder_router.get("/files")
 async def list_accessible_files(
-    current_user: User = Depends(get_current_user_v2),
-    db: AsyncSession = Depends(get_async_db)
+        current_user: User = Depends(get_current_user_v2),
+        db: AsyncSession = Depends(get_async_db)
 ):
     """List all files and folders the user has access to."""
     try:
-        folders = await FolderService.get_accessible_folders_and_files(db, current_user.id)
+        # Check if user is admin
+        user_role = await get_user_role_from_token(db, current_user)
+        is_admin = user_role and user_role.name == 'admin'
+
+        folders = await FolderService.get_accessible_folders_and_files(db, current_user.id, is_admin=is_admin)
+
         response = ResponseBuilder.from_common_response(
             CommonResponses.success(
                 data=folders,
@@ -60,6 +66,7 @@ async def list_accessible_files(
             data=None
         )
         return response.send_error_response()
+
 
 @folder_router.post("/file/upload")
 async def upload_file(

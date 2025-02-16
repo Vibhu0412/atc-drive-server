@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from starlette import status
 
 from src.config.logger import logger
+from src.v1_modules.auth.model import User
 from src.v1_modules.auth.utilities import get_admin_user
 from src.v1_modules.folder_managment.folder_manager import get_storage_manager
 from src.v1_modules.folder_managment.model import Folder, UserFolderPermission, File, UserFilePermission, SharedItem
@@ -173,44 +174,90 @@ class FolderService:
                     logger.error(f"Failed to clean up storage folder: {str(e)}")
 
     @staticmethod
-    async def get_accessible_folders_and_files(db, user_id) :
+    async def get_accessible_folders_and_files(db, user_id, is_admin=False):
         """
         Retrieve all folders and files that a user has permission to view.
+        For admin users, groups items by username.
         """
-        # Fetch folder permissions
-        folder_permissions_query = select(UserFolderPermission).where(UserFolderPermission.user_id == user_id)
-        folder_permissions_result = await db.execute(folder_permissions_query)
-        folder_permissions = folder_permissions_result.scalars().all()
+        if not is_admin:
+            # Original logic for regular users
+            folder_permissions_query = select(UserFolderPermission).where(UserFolderPermission.user_id == user_id)
+            folder_permissions_result = await db.execute(folder_permissions_query)
+            folder_permissions = folder_permissions_result.scalars().all()
 
-        # Fetch file permissions
-        file_permissions_query = select(UserFilePermission).where(UserFilePermission.user_id == user_id)
-        file_permissions_result = await db.execute(file_permissions_query)
-        file_permissions = file_permissions_result.scalars().all()
+            file_permissions_query = select(UserFilePermission).where(UserFilePermission.user_id == user_id)
+            file_permissions_result = await db.execute(file_permissions_query)
+            file_permissions = file_permissions_result.scalars().all()
 
-        accessible_folders = []
-        accessible_files = []
+            accessible_folders = []
+            accessible_files = []
 
-        # Process folder permissions
-        for permission in folder_permissions:
-            if permission.can_view:
-                folder = await get_folder_with_contents(db, permission.folder_id)
-                if folder:
-                    accessible_folders.append(folder)
+            for permission in folder_permissions:
+                if permission.can_view:
+                    folder = await get_folder_with_contents(db, permission.folder_id)
+                    if folder:
+                        accessible_folders.append(folder)
 
-        # Process file permissions
-        for permission in file_permissions:
-            if permission.can_view:
-                file_query = select(File).where(File.id == permission.file_id)
-                file_result = await db.execute(file_query)
-                file = file_result.scalar_one_or_none()
-                if file:
-                    accessible_files.append(file)
+            for permission in file_permissions:
+                if permission.can_view:
+                    file_query = select(File).where(File.id == permission.file_id)
+                    file_result = await db.execute(file_query)
+                    file = file_result.scalar_one_or_none()
+                    if file:
+                        accessible_files.append(file)
 
-        # Convert folders and files to response models
-        folder_responses = [FolderResponse.from_orm(folder) for folder in accessible_folders]
-        file_responses = [FileResponse.from_orm(file) for file in accessible_files]
+            folder_responses = [FolderResponse.from_orm(folder) for folder in accessible_folders]
+            file_responses = [FileResponse.from_orm(file) for file in accessible_files]
 
-        return folder_responses, file_responses
+            return folder_responses, file_responses
+        else:
+            # Admin logic - group by users
+            # Get all users
+            users_query = select(User)
+            users_result = await db.execute(users_query)
+            users = users_result.scalars().all()
+
+            user_resources = {}
+
+            for user in users:
+                # Get folders for this user
+                folder_permissions_query = select(UserFolderPermission).where(
+                    UserFolderPermission.user_id == user.id
+                )
+                folder_permissions_result = await db.execute(folder_permissions_query)
+                folder_permissions = folder_permissions_result.scalars().all()
+
+                # Get files for this user
+                file_permissions_query = select(UserFilePermission).where(
+                    UserFilePermission.user_id == user.id
+                )
+                file_permissions_result = await db.execute(file_permissions_query)
+                file_permissions = file_permissions_result.scalars().all()
+
+                user_folders = []
+                user_files = []
+
+                for permission in folder_permissions:
+                    if permission.can_view:
+                        folder = await get_folder_with_contents(db, permission.folder_id)
+                        if folder:
+                            user_folders.append(folder)
+
+                for permission in file_permissions:
+                    if permission.can_view:
+                        file_query = select(File).where(File.id == permission.file_id)
+                        file_result = await db.execute(file_query)
+                        file = file_result.scalar_one_or_none()
+                        if file:
+                            user_files.append(file)
+
+                if user_folders or user_files:
+                    user_resources[user.username] = {
+                        "folders": [FolderResponse.from_orm(folder) for folder in user_folders],
+                        "files": [FileResponse.from_orm(file) for file in user_files]
+                    }
+
+            return user_resources
 
 class FileService:
     @staticmethod

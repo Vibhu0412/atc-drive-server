@@ -66,10 +66,9 @@ async def get_user_role_from_token(db, current_user: User):
         admin_role = admin_role_result.scalars().first()
         print("hey ", admin_role.id)
         if not user_role or user_role.id != admin_role.id:
-            raise HTTPException(
-                status_code=403,
-                detail="Insufficient permissions. Admin access required."
-            )
+            print("user_role",user_role)
+            return user_role
+
         print("user_role",user_role)
         return user_role
 

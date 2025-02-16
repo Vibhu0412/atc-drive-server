@@ -8,7 +8,7 @@ from src.db.dbConnections import get_async_db
 from src.utills.response_v2 import ResponseBuilder, CommonResponses, ResponseStatus
 from src.v1_modules.auth.crud import get_current_user_v2, get_user_role_from_token
 from src.v1_modules.auth.model import User
-from src.v1_modules.auth.utilities import get_admin_user, has_folder_permission, has_file_permission
+from src.v1_modules.auth.utilities import has_folder_permission, has_file_permission
 from src.v1_modules.folder_managment.schema import FolderCreate, FolderResponse, ShareItemRequest
 from src.v1_modules.folder_managment.services import FolderService, FileService, SharingService
 

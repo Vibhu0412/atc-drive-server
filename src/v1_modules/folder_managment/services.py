@@ -180,7 +180,6 @@ class FolderService:
         For admin users, groups items by username.
         """
         if not is_admin:
-            # Original logic for regular users
             folder_permissions_query = select(UserFolderPermission).where(UserFolderPermission.user_id == user_id)
             folder_permissions_result = await db.execute(folder_permissions_query)
             folder_permissions = folder_permissions_result.scalars().all()
@@ -191,12 +190,16 @@ class FolderService:
 
             accessible_folders = []
             accessible_files = []
+            processed_folder_ids = set()  # Keep track of processed folders
 
             for permission in folder_permissions:
-                if permission.can_view:
+                if permission.can_view and permission.folder_id not in processed_folder_ids:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:
-                        accessible_folders.append(folder)
+                        # Only add top-level folders (those without parents)
+                        if not folder.parent_folder_id:
+                            accessible_folders.append(folder)
+                        processed_folder_ids.add(folder.id)
 
             for permission in file_permissions:
                 if permission.can_view:
@@ -211,8 +214,7 @@ class FolderService:
 
             return folder_responses, file_responses
         else:
-            # Admin logic - group by users
-            # Get all users
+            # Admin logic remains the same but with the same duplication fix
             users_query = select(User)
             users_result = await db.execute(users_query)
             users = users_result.scalars().all()
@@ -220,14 +222,12 @@ class FolderService:
             user_resources = {}
 
             for user in users:
-                # Get folders for this user
                 folder_permissions_query = select(UserFolderPermission).where(
                     UserFolderPermission.user_id == user.id
                 )
                 folder_permissions_result = await db.execute(folder_permissions_query)
                 folder_permissions = folder_permissions_result.scalars().all()
 
-                # Get files for this user
                 file_permissions_query = select(UserFilePermission).where(
                     UserFilePermission.user_id == user.id
                 )
@@ -236,12 +236,14 @@ class FolderService:
 
                 user_folders = []
                 user_files = []
+                processed_folder_ids = set()  # Keep track of processed folders
 
                 for permission in folder_permissions:
-                    if permission.can_view:
+                    if permission.can_view and permission.folder_id not in processed_folder_ids:
                         folder = await get_folder_with_contents(db, permission.folder_id)
-                        if folder:
+                        if folder and not folder.parent_folder_id:  # Only add top-level folders
                             user_folders.append(folder)
+                            processed_folder_ids.add(folder.id)
 
                 for permission in file_permissions:
                     if permission.can_view:

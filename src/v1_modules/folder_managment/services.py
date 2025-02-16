@@ -196,8 +196,8 @@ class FolderService:
                 if permission.can_view and permission.folder_id not in processed_folder_ids:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:
-                        # Check the folder model's parent_folder_id before conversion
-                        if not folder.parent_folder_id:
+                        # Only add folders that are not subfolders (i.e., parent_folder_id is None)
+                        if folder.parent_folder_id is None:
                             accessible_folders.append(folder)
                         processed_folder_ids.add(folder.id)
 
@@ -241,7 +241,7 @@ class FolderService:
                 for permission in folder_permissions:
                     if permission.can_view and permission.folder_id not in processed_folder_ids:
                         folder = await get_folder_with_contents(db, permission.folder_id)
-                        if folder and not folder.parent_folder_id:  # Check the model's attribute
+                        if folder and folder.parent_folder_id is None:  # Only add top-level folders
                             user_folders.append(folder)
                             processed_folder_ids.add(folder.id)
 
@@ -261,7 +261,6 @@ class FolderService:
                     }
 
             return user_resources
-
 class FileService:
     @staticmethod
     async def upload_file(

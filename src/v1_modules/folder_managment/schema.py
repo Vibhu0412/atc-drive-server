@@ -3,7 +3,7 @@ from pydantic import  Field
 from uuid import UUID
 from pydantic import UUID4, validator,ConfigDict
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic import BaseModel
 
 
@@ -25,23 +25,19 @@ class FileResponse(BaseModel):
     folder_id: UUID
     uploaded_by_id: UUID
     uploaded_at: datetime
-    file_type: Optional[str] = None
-    file_size: Optional[int] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
+    file_type: str
+    file_size: int
+    file_url: Optional[str] = None  # Add this field for pre-signed URL
 
 class FolderResponse(BaseModel):
     id: UUID
     name: str
-    files: List[FileResponse]
-    subfolders: List['FolderResponse']
-    parent_folder_id: Optional[UUID] = None
-    owner_id: UUID  # Ensure this field is required
-    created_at: datetime  # Ensure this field is required
-
-    model_config = ConfigDict(from_attributes=True)
-
+    parent_folder_id: Optional[UUID]
+    owner_id: UUID
+    created_at: datetime
+    files: List[FileResponse] = []
+    subfolders: List['FolderResponse'] = []
+    children: List[Union[FileResponse, 'FolderResponse']] = []
 
 
 class ShareItemRequest(BaseModel):

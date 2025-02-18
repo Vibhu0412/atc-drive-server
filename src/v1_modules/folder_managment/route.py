@@ -117,7 +117,7 @@ async def share_folder(
         # Validate item type
         if share_request.item_type != "folder":
             return ResponseBuilder.from_common_response(
-                CommonResponses.BAD_REQUEST("Invalid item type. Expected 'folder'.")
+                CommonResponses.validation_error("Invalid item type. Expected 'folder'.")
             ).send_error_response()
 
         # Convert emails to user IDs
@@ -127,7 +127,7 @@ async def share_folder(
             user = user.scalar_one_or_none()
             if not user:
                 return ResponseBuilder.from_common_response(
-                    CommonResponses.BAD_REQUEST(f"User with email {email} not found")
+                    CommonResponses.validation_error(f"User with email {email} not found")
                 ).send_error_response()
             shared_with_user_ids.append(user.id)
 
@@ -166,7 +166,7 @@ async def share_file(
         # Validate item type
         if share_request.item_type != "file":
             return ResponseBuilder.from_common_response(
-                CommonResponses.BAD_REQUEST("Invalid item type. Expected 'file'.")
+                CommonResponses.validation_error("Invalid item type. Expected 'file'.")
             ).send_error_response()
 
         # Convert emails to user IDs
@@ -176,7 +176,7 @@ async def share_file(
             user = user.scalar_one_or_none()
             if not user:
                 return ResponseBuilder.from_common_response(
-                    CommonResponses.BAD_REQUEST(f"User with email {email} not found")
+                    CommonResponses.validation_error(f"User with email {email} not found")
                 ).send_error_response()
             shared_with_user_ids.append(user.id)
 
@@ -196,6 +196,34 @@ async def share_file(
             CommonResponses.success(data=result, message="File shared successfully")
         ).send_success_response()
 
+    except Exception as e:
+        return ResponseBuilder(
+            status_code=ResponseStatus.INTERNAL_ERROR,
+            message=str(e),
+            data=None
+        ).send_error_response()
+
+@folder_router.get("/files/{file_id}/download")
+async def download_file(
+    file_id: UUID,
+    current_user: User = Depends(get_current_user_v2),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Get a pre-signed URL to download a specific file."""
+    try:
+        file_url = await FileService.download_file(db, file_id, current_user)
+        return ResponseBuilder.from_common_response(
+            CommonResponses.success(
+                data={"file_url": file_url},
+                message="Pre-signed URL generated successfully"
+            )
+        ).send_success_response()
+    except HTTPException as e:
+        return ResponseBuilder(
+            status_code=e.status_code,
+            message=e.detail,
+            data=None
+        ).send_error_response()
     except Exception as e:
         return ResponseBuilder(
             status_code=ResponseStatus.INTERNAL_ERROR,

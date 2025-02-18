@@ -5,8 +5,8 @@ anyio==4.8.0
 async-timeout==5.0.1
 asyncpg==0.30.0
 bcrypt==4.2.1
-boto3==1.36.11
-botocore==1.36.11
+boto3~=1.36.1
+botocore~=1.36.1
 click==8.1.8
 colorama==0.4.6
 dnspython==2.7.0
@@ -40,3 +40,5 @@ starlette==0.45.2
 typing_extensions==4.12.2
 urllib3==2.3.0
 uvicorn==0.34.0
+
+aioboto3~=13.4.0

@@ -9,7 +9,7 @@ from starlette import status
 from src.config.logger import logger
 from src.v1_modules.auth.model import User
 from src.v1_modules.auth.utilities import get_admin_user
-from src.v1_modules.folder_managment.folder_manager import get_storage_manager
+from src.v1_modules.folder_managment.folder_manager import get_storage_manager, S3StorageManager
 from src.v1_modules.folder_managment.model import Folder, UserFolderPermission, File, UserFilePermission, SharedItem
 from src.v1_modules.folder_managment.schema import FolderResponse, FileResponse
 from src.v1_modules.folder_managment.utilities import get_folder_with_contents
@@ -179,6 +179,7 @@ class FolderService:
         Retrieve all folders and files that a user has permission to view.
         For admin users, groups items by username.
         """
+        storage_manager = get_storage_manager()
         if not is_admin:
             # Original logic for regular users
             folder_permissions_query = select(UserFolderPermission).where(UserFolderPermission.user_id == user_id)
@@ -204,7 +205,12 @@ class FolderService:
                     file_result = await db.execute(file_query)
                     file = file_result.scalar_one_or_none()
                     if file:
-                        accessible_files.append(file)
+                        # Generate pre-signed URL for the file
+                        storage_manager: S3StorageManager = get_storage_manager()
+                        file_url = await storage_manager.generate_presigned_url(file.file_path)
+                        file_response = FileResponse.from_orm(file)
+                        file_response.file_url = file_url
+                        accessible_files.append(file_response)
 
             folder_responses = [FolderResponse.from_orm(folder) for folder in accessible_folders]
             file_responses = [FileResponse.from_orm(file) for file in accessible_files]
@@ -249,7 +255,12 @@ class FolderService:
                         file_result = await db.execute(file_query)
                         file = file_result.scalar_one_or_none()
                         if file:
-                            user_files.append(file)
+                            # Generate pre-signed URL for the file
+
+                            file_url = await storage_manager.generate_presigned_url(file.file_path)
+                            file_response = FileResponse.from_orm(file)
+                            file_response.file_url = file_url
+                            user_files.append(file_response)
 
                 if user_folders or user_files:
                     user_resources[user.username] = {
@@ -258,7 +269,6 @@ class FolderService:
                     }
 
             return user_resources
-
 class FileService:
     @staticmethod
     async def upload_file(
@@ -297,7 +307,7 @@ class FileService:
 
                 folder_id = folder.id
 
-            # Check if the folder exists
+            # Fetch the folder name from the database using folder_id
             folder_query = select(Folder).where(Folder.id == folder_id)
             folder_result = await db.execute(folder_query)
             folder = folder_result.scalar_one_or_none()
@@ -325,22 +335,21 @@ class FileService:
                     detail="Insufficient permissions to upload files to this folder"
                 )
 
-            # Save file to storage
-            file_path = f"storage/{folder_id}/{file.filename}"
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            # Use S3StorageManager to store the file in the S3 bucket
+            storage_manager = get_storage_manager()
 
-            content = await file.read()
-            with open(file_path, "wb") as f:
-                f.write(content)
+            # Use the folder's name (from the database) to store the file
+            folder_name = folder.name
+            file_key = await storage_manager.store_file(folder_name, file)
 
             # Create file record
             new_file = File(
                 filename=file.filename,
-                file_path=file_path,
+                file_path=file_key,  # Use the S3 file key as the file path
                 folder_id=folder_id,
                 uploaded_by_id=user_id,
                 file_type=file.content_type,
-                file_size=len(content)
+                file_size=file.size  # Use file.size directly (FastAPI provides this)
             )
             db.add(new_file)
             await db.commit()
@@ -372,7 +381,7 @@ class FileService:
 
             await db.commit()
 
-            logger.info(f"File '{file.filename}' uploaded successfully to folder '{folder_id}' by user '{user_id}'")
+            logger.info(f"File '{file.filename}' uploaded successfully to folder '{folder_name}' by user '{user_id}'")
 
             # Return the uploaded file's details as a FileResponse object
             return FileResponse(
@@ -396,6 +405,47 @@ class FileService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to upload file"
             )
+
+    @staticmethod
+    async def download_file(
+        db,
+        file_id,
+        current_user
+    ) :
+        """Generate a pre-signed URL to download a specific file."""
+        # Check if the file exists
+        file_query = select(File).where(File.id == file_id)
+        file_result = await db.execute(file_query)
+        file = file_result.scalar_one_or_none()
+
+        if not file:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+
+        # Check if the user has permission to view the file
+        permission_query = select(UserFilePermission).where(
+            and_(
+                UserFilePermission.file_id == file_id,
+                UserFilePermission.user_id == current_user.id,
+                UserFilePermission.can_view == True
+            )
+        )
+        permission_result = await db.execute(permission_query)
+        permission = permission_result.scalar_one_or_none()
+
+        if not permission and file.uploaded_by_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized to access this file"
+            )
+
+        # Generate pre-signed URL
+        storage_manager: S3StorageManager = get_storage_manager()
+        file_url = await storage_manager.generate_presigned_url(file.file_path)
+
+        return file_url
 
 
 

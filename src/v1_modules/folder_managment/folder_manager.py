@@ -1,12 +1,15 @@
 from abc import ABC, abstractmethod
-import os
 from pathlib import Path
 import boto3
-from fastapi import UploadFile
 import shutil
 import aiofiles
-from botocore.exceptions import ClientError
 from dotenv import load_dotenv
+import os
+import aioboto3
+from fastapi import UploadFile, HTTPException, status
+from botocore.exceptions import ClientError
+
+from src.config.logger import logger
 
 # Load environment variables
 load_dotenv()
@@ -82,6 +85,7 @@ class S3StorageManager(BaseStorageManager):
             aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
             region_name=os.getenv('AWS_REGION')
         )
+        self.session = aioboto3.Session()
         self.bucket_name = os.getenv('S3_BUCKET_NAME')
 
     def get_folder_path(self, folder_name: str) -> str:
@@ -134,6 +138,29 @@ class S3StorageManager(BaseStorageManager):
             Bucket=self.bucket_name,
             Key=file_path
         )
+
+    async def generate_presigned_url(self, file_key: str, expiration: int = 3600) -> str:
+        """Generate a pre-signed URL for a file in S3 asynchronously."""
+        try:
+            async with self.session.client(
+                's3',
+                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                region_name=os.getenv('AWS_REGION')
+            ) as s3_client:
+                url = await s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': self.bucket_name, 'Key': file_key},
+                    ExpiresIn=expiration
+                )
+                return url
+        except ClientError as e:
+            logger.error(f"Error generating pre-signed URL: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate pre-signed URL"
+            )
+
 
 
 def get_storage_manager() -> BaseStorageManager:

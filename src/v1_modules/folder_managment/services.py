@@ -193,11 +193,18 @@ class FolderService:
             accessible_folders = []
             accessible_files = []
 
+            # Track folders that are subfolders to avoid duplication
+            subfolder_ids = set()
+
             for permission in folder_permissions:
                 if permission.can_view:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:
-                        accessible_folders.append(folder)
+                        # If the folder is a subfolder, skip adding it to the main list
+                        if folder["parent_folder_id"] is not None:
+                            subfolder_ids.add(folder["id"])
+                        else:
+                            accessible_folders.append(folder)
 
             for permission in file_permissions:
                 if permission.can_view:
@@ -243,11 +250,18 @@ class FolderService:
                 user_folders = []
                 user_files = []
 
+                # Track folders that are subfolders to avoid duplication
+                subfolder_ids = set()
+
                 for permission in folder_permissions:
                     if permission.can_view:
                         folder = await get_folder_with_contents(db, permission.folder_id)
                         if folder:
-                            user_folders.append(folder)
+                            # If the folder is a subfolder, skip adding it to the main list
+                            if folder["parent_folder_id"] is not None:
+                                subfolder_ids.add(folder["id"])
+                            else:
+                                user_folders.append(folder)
 
                 for permission in file_permissions:
                     if permission.can_view:
@@ -256,7 +270,6 @@ class FolderService:
                         file = file_result.scalar_one_or_none()
                         if file:
                             # Generate pre-signed URL for the file
-
                             file_url = await storage_manager.generate_presigned_url(file.file_path)
                             file_response = FileResponse.from_orm(file)
                             file_response.file_url = file_url
@@ -269,6 +282,7 @@ class FolderService:
                     }
 
             return user_resources
+
 class FileService:
     @staticmethod
     async def upload_file(

@@ -21,10 +21,12 @@ app.add_middleware(
         "http://65.2.96.95",
         "http://ec2-65-2-96-95.ap-south-1.compute.amazonaws.com",
         "http://localhost:9000",
-        "http://127.0.0.1:9000"
-        "http://65.2.96.95:9000"
+        "http://127.0.0.1:9000",
+        "http://65.2.96.95:9000",
+        "http://localhost:63342"  # Add this line
     ],
-    allow_methods=["*"], allow_headers=["*"]
+    allow_methods=["*"],
+    allow_headers=["*"]
 )
 @app.get("/")
 def root():

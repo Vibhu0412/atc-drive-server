@@ -29,6 +29,9 @@ class FileResponse(BaseModel):
     file_size: int
     file_url: Optional[str] = None  # Add this field for pre-signed URL
 
+    model_config = ConfigDict(from_attributes=True)
+
+
 class FolderResponse(BaseModel):
     id: UUID
     name: str
@@ -39,6 +42,7 @@ class FolderResponse(BaseModel):
     subfolders: List['FolderResponse'] = []
     children: List[Union[FileResponse, 'FolderResponse']] = []
 
+    model_config = ConfigDict(from_attributes=True)
 
 class ShareItemRequest(BaseModel):
     item_type: str

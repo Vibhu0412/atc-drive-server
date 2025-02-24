@@ -31,7 +31,6 @@ class FileResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-
 class FolderResponse(BaseModel):
     id: UUID
     name: str

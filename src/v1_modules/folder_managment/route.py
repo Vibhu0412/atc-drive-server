@@ -141,7 +141,7 @@ async def share_folder(
             db=db,
             folder_id=share_request.item_id,
             shared_by_id=current_user.id,
-            shared_with_user_ids=shared_with_user_ids
+            shared_with_user_emails=shared_with_user_ids
         )
         return ResponseBuilder.from_common_response(
             CommonResponses.success(data=result, message="Folder shared successfully")
@@ -190,7 +190,7 @@ async def share_file(
             db=db,
             file_id=share_request.item_id,
             shared_by_id=current_user.id,
-            shared_with_user_ids=shared_with_user_ids
+            shared_with_user_emails=shared_with_user_ids
         )
         return ResponseBuilder.from_common_response(
             CommonResponses.success(data=result, message="File shared successfully")

@@ -469,11 +469,11 @@ class SharingService:
             db,
             folder_id,
             shared_by_id,
-            shared_with_user_ids
+            shared_with_user_emails,
+            actions
     ):
         """
-        Share a folder with multiple users.
-        Avoids duplicate sharing by checking if the folder is already shared with the user.
+        Share a folder with multiple users and define their permissions.
         """
         try:
             # Check if folder exists and get its details
@@ -512,13 +512,22 @@ class SharingService:
                 )
 
             # Share with each user in the list
-            for shared_with_id in shared_with_user_ids:
+            for shared_with_email in shared_with_user_emails:
+                # Fetch the user by email
+                user_query = select(User).where(User.email == shared_with_email)
+                user_result = await db.execute(user_query)
+                shared_with_user = user_result.scalar_one_or_none()
+
+                if not shared_with_user:
+                    logger.warning(f"User with email {shared_with_email} not found")
+                    continue
+
                 # Check if the folder is already shared with the user
                 sharing_record_query = select(SharedItem).where(
                     and_(
                         SharedItem.item_type == "folder",
                         SharedItem.item_id == folder_id,
-                        SharedItem.shared_with == shared_with_id
+                        SharedItem.shared_with == shared_with_user.id
                     )
                 )
                 sharing_record_result = await db.execute(sharing_record_query)
@@ -532,7 +541,7 @@ class SharingService:
                     item_type="folder",
                     item_id=folder_id,
                     shared_by=shared_by_id,
-                    shared_with=shared_with_id,
+                    shared_with=shared_with_user.id,
                     share_type="full" if folder.parent_folder_id is None else "specific"
                 )
                 db.add(shared_item)
@@ -541,7 +550,7 @@ class SharingService:
                 folder_permission_query = select(UserFolderPermission).where(
                     and_(
                         UserFolderPermission.folder_id == folder_id,
-                        UserFolderPermission.user_id == shared_with_id
+                        UserFolderPermission.user_id == shared_with_user.id
                     )
                 )
                 folder_permission_result = await db.execute(folder_permission_query)
@@ -550,13 +559,13 @@ class SharingService:
                 if not folder_permission:
                     # Create folder permission for shared user
                     folder_permission = UserFolderPermission(
-                        user_id=shared_with_id,
+                        user_id=shared_with_user.id,
                         folder_id=folder_id,
                         can_view=True,
-                        can_edit=True,
-                        can_delete=False,
-                        can_create=True,
-                        can_share=False
+                        can_edit="can_edit" in actions,
+                        can_delete="can_delete" in actions,
+                        can_create="can_create" in actions,
+                        can_share="can_share" in actions
                     )
                     db.add(folder_permission)
 
@@ -565,7 +574,8 @@ class SharingService:
                     await SharingService._share_subfolders_recursively(
                         db,
                         folder,
-                        shared_with_id
+                        shared_with_user.id,
+                        actions
                     )
 
                 # Share all files within the folder
@@ -574,7 +584,7 @@ class SharingService:
                     file_permission_query = select(UserFilePermission).where(
                         and_(
                             UserFilePermission.file_id == file.id,
-                            UserFilePermission.user_id == shared_with_id
+                            UserFilePermission.user_id == shared_with_user.id
                         )
                     )
                     file_permission_result = await db.execute(file_permission_query)
@@ -583,12 +593,12 @@ class SharingService:
                     if not file_permission:
                         # Create file permission for shared user
                         file_permission = UserFilePermission(
-                            user_id=shared_with_id,
+                            user_id=shared_with_user.id,
                             file_id=file.id,
                             can_view=True,
-                            can_edit=True,
-                            can_delete=False,
-                            can_share=False
+                            can_edit="can_edit" in actions,
+                            can_delete="can_delete" in actions,
+                            can_share="can_share" in actions
                         )
                         db.add(file_permission)
 
@@ -609,10 +619,11 @@ class SharingService:
     async def _share_subfolders_recursively(
             db,
             folder: Folder,
-            shared_with_id
+            shared_with_id,
+            actions
     ):
         """
-        Recursively share all subfolders and their contents.
+        Recursively share all subfolders and their contents with the specified permissions.
         """
         for subfolder in folder.subfolders:
             # Create permission for subfolder
@@ -620,10 +631,10 @@ class SharingService:
                 user_id=shared_with_id,
                 folder_id=subfolder.id,
                 can_view=True,
-                can_edit=True,
-                can_delete=False,
-                can_create=True,
-                can_share=False
+                can_edit="can_edit" in actions,
+                can_delete="can_delete" in actions,
+                can_create="can_create" in actions,
+                can_share="can_share" in actions
             )
             db.add(subfolder_permission)
 
@@ -633,9 +644,9 @@ class SharingService:
                     user_id=shared_with_id,
                     file_id=file.id,
                     can_view=True,
-                    can_edit=True,
-                    can_delete=False,
-                    can_share=False
+                    can_edit="can_edit" in actions,
+                    can_delete="can_delete" in actions,
+                    can_share="can_share" in actions
                 )
                 db.add(file_permission)
 
@@ -643,7 +654,8 @@ class SharingService:
             await SharingService._share_subfolders_recursively(
                 db,
                 subfolder,
-                shared_with_id
+                shared_with_id,
+                actions
             )
 
     @staticmethod
@@ -651,10 +663,11 @@ class SharingService:
             db,
             file_id,
             shared_by_id,
-            shared_with_user_ids
+            shared_with_user_emails,
+            actions
     ):
         """
-        Share a specific file with multiple users.
+        Share a specific file with multiple users and define their permissions.
         """
         try:
             # Check if file exists
@@ -686,12 +699,21 @@ class SharingService:
                 )
 
             # Share with each user in the list
-            for shared_with_id in shared_with_user_ids:
+            for shared_with_email in shared_with_user_emails:
+                # Fetch the user by email
+                user_query = select(User).where(User.email == shared_with_email)
+                user_result = await db.execute(user_query)
+                shared_with_user = user_result.scalar_one_or_none()
+
+                if not shared_with_user:
+                    logger.warning(f"User with email {shared_with_email} not found")
+                    continue
+
                 sharing_record_query = select(SharedItem).where(
                     and_(
                         SharedItem.item_type == "file",
                         SharedItem.item_id == file_id,
-                        SharedItem.shared_with == shared_with_id
+                        SharedItem.shared_with == shared_with_user.id
                     )
                 )
                 sharing_record_result = await db.execute(sharing_record_query)
@@ -705,19 +727,19 @@ class SharingService:
                     item_type="file",
                     item_id=file_id,
                     shared_by=shared_by_id,
-                    shared_with=shared_with_id,
+                    shared_with=shared_with_user.id,
                     share_type="specific"
                 )
                 db.add(shared_item)
 
                 # Create file permission for shared user
                 file_permission = UserFilePermission(
-                    user_id=shared_with_id,
+                    user_id=shared_with_user.id,
                     file_id=file_id,
                     can_view=True,
-                    can_edit=True,
-                    can_delete=False,
-                    can_share=False
+                    can_edit="can_edit" in actions,
+                    can_delete="can_delete" in actions,
+                    can_share="can_share" in actions
                 )
                 db.add(file_permission)
 
@@ -732,87 +754,4 @@ class SharingService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to share file: {str(e)}"
-            )
-
-    @staticmethod
-    async def revoke_sharing(
-            db,
-            item_type: str,
-            item_id,
-            shared_by_id,
-            shared_with_id
-    ):
-        """
-        Revoke sharing permissions for a file or folder.
-        """
-        try:
-            # Delete sharing record
-            sharing_query = select(SharedItem).where(
-                and_(
-                    SharedItem.item_type == item_type,
-                    SharedItem.item_id == item_id,
-                    SharedItem.shared_by == shared_by_id,
-                    SharedItem.shared_with == shared_with_id
-                )
-            )
-            result = await db.execute(sharing_query)
-            shared_item = result.scalar_one_or_none()
-
-            if not shared_item:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Sharing record not found"
-                )
-
-            await db.delete(shared_item)
-
-            # Remove permissions based on item type
-            if item_type == "folder":
-                # Remove folder permissions
-                folder_query = select(UserFolderPermission).where(
-                    and_(
-                        UserFolderPermission.folder_id == item_id,
-                        UserFolderPermission.user_id == shared_with_id
-                    )
-                )
-                result = await db.execute(folder_query)
-                folder_permission = result.scalar_one_or_none()
-
-                if folder_permission:
-                    await db.delete(folder_permission)
-
-                    # If it was a parent folder, remove all subfolder permissions
-                    folder = await db.get(Folder, item_id)
-                    if folder and folder.parent_folder_id is None:
-                        await SharingService._revoke_subfolder_permissions(
-                            db,
-                            folder,
-                            shared_with_id
-                        )
-
-            else:  # file
-                # Remove file permissions
-                file_query = select(UserFilePermission).where(
-                    and_(
-                        UserFilePermission.file_id == item_id,
-                        UserFilePermission.user_id == shared_with_id
-                    )
-                )
-                result = await db.execute(file_query)
-                file_permission = result.scalar_one_or_none()
-
-                if file_permission:
-                    await db.delete(file_permission)
-
-            await db.commit()
-            return {"message": f"{item_type.capitalize()} sharing revoked successfully"}
-
-        except HTTPException as e:
-            raise e
-        except Exception as e:
-            logger.error(f"Error revoking sharing: {str(e)}")
-            await db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to revoke sharing: {str(e)}"
             )

@@ -47,7 +47,8 @@ class ShareItemRequest(BaseModel):
     item_type: str
     item_id: UUID
     shared_with_user_emails: List[str] = Field(..., description="List of user emails to share the item with")
-
+    actions: List[str] = Field(...,
+                               description="List of actions the shared users can perform (e.g., can_edit, can_share, can_delete, can_create)")
 # Base Models
 class UserBase(BaseModel):
     id: UUID4

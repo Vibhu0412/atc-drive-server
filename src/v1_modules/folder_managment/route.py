@@ -141,7 +141,8 @@ async def share_folder(
             db=db,
             folder_id=share_request.item_id,
             shared_by_id=current_user.id,
-            shared_with_user_emails=shared_with_user_ids
+            shared_with_user_emails=share_request.shared_with_user_emails,
+            actions=share_request.actions
         )
         return ResponseBuilder.from_common_response(
             CommonResponses.success(data=result, message="Folder shared successfully")
@@ -190,7 +191,8 @@ async def share_file(
             db=db,
             file_id=share_request.item_id,
             shared_by_id=current_user.id,
-            shared_with_user_emails=shared_with_user_ids
+            shared_with_user_emails=share_request.shared_with_user_emails,
+            actions=share_request.actions
         )
         return ResponseBuilder.from_common_response(
             CommonResponses.success(data=result, message="File shared successfully")
@@ -202,6 +204,7 @@ async def share_file(
             message=str(e),
             data=None
         ).send_error_response()
+
 
 @folder_router.get("/files/{file_id}/download")
 async def download_file(

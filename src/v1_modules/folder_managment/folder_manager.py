@@ -161,7 +161,20 @@ class S3StorageManager(BaseStorageManager):
                 detail="Failed to generate pre-signed URL"
             )
 
-
+    async def download_file(self, file_path):
+        """
+        Download a file from S3 and return its content as bytes.
+        """
+        try:
+            # Depending on how your S3 client is implemented, you might need to adjust this
+            response = await self.s3_client.get_object(
+                Bucket=self.bucket_name,
+                Key=file_path
+            )
+            return await response['Body'].read()
+        except Exception as e:
+            logger.error(f"Error downloading file from S3: {str(e)}")
+            raise
 
 def get_storage_manager() -> BaseStorageManager:
     """Factory function to get the appropriate storage manager based on environment"""

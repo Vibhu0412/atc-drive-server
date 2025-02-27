@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import HTTPException, APIRouter, Depends, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import StreamingResponse
 
 from src.db.dbConnections import get_async_db
 from src.utills.response_v2 import ResponseBuilder, CommonResponses, ResponseStatus
@@ -221,6 +222,44 @@ async def download_file(
                 message="Pre-signed URL generated successfully"
             )
         ).send_success_response()
+    except HTTPException as e:
+        return ResponseBuilder(
+            status_code=e.status_code,
+            message=e.detail,
+            data=None
+        ).send_error_response()
+    except Exception as e:
+        return ResponseBuilder(
+            status_code=ResponseStatus.INTERNAL_ERROR,
+            message=str(e),
+            data=None
+        ).send_error_response()
+
+
+@folder_router.get("/folders/{folder_id}/download-zip")
+async def download_folder_as_zip(
+        folder_id: UUID,
+        current_user: User = Depends(get_current_user_v2),
+        db: AsyncSession = Depends(get_async_db)
+):
+    """Download all files in a folder as a ZIP archive."""
+    try:
+        # Validate permissions using the utility function
+        if not await has_folder_permission(db, current_user.id, folder_id, "can_view"):
+            return ResponseBuilder.from_common_response(
+                CommonResponses.unauthorized()
+            ).send_error_response()
+
+        # Get the ZIP file from the service
+        zip_data = await FolderService.download_folder_as_zip(db, folder_id, current_user)
+
+        # Return as a streaming response to avoid loading the entire file into memory twice
+        return StreamingResponse(
+            zip_data["zip_buffer"],
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={zip_data['folder_name']}.zip"}
+        )
+
     except HTTPException as e:
         return ResponseBuilder(
             status_code=e.status_code,

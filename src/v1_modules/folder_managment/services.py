@@ -283,6 +283,84 @@ class FolderService:
 
             return user_resources
 
+    @staticmethod
+    async def download_folder_as_zip(
+            db,
+            folder_id,
+            current_user
+    ):
+        """
+        Download all files in a folder as a ZIP archive.
+        Returns a BytesIO buffer containing the ZIP file.
+        """
+        import io
+        import zipfile
+
+        try:
+            # Fetch the folder from the database
+            folder_query = select(Folder).where(Folder.id == folder_id)
+            folder_result = await db.execute(folder_query)
+            folder = folder_result.scalar_one_or_none()
+
+            if not folder:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Folder not found"
+                )
+
+            # Check if the user has permission to view the folder
+            permission_query = select(UserFolderPermission).where(
+                and_(
+                    UserFolderPermission.folder_id == folder_id,
+                    UserFolderPermission.user_id == current_user.id,
+                    UserFolderPermission.can_view == True
+                )
+            )
+            permission_result = await db.execute(permission_query)
+            permission = permission_result.scalar_one_or_none()
+
+            if not permission and folder.owner_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Unauthorized to access this folder"
+                )
+
+            # Get all files in the folder
+            files_query = select(File).where(File.folder_id == folder_id)
+            files_result = await db.execute(files_query)
+            files = files_result.scalars().all()
+
+            # Create a ZIP file in memory
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+                storage_manager = get_storage_manager()
+                for file in files:
+                    try:
+                        storage_manager: S3StorageManager = get_storage_manager()
+
+                        # Download the file from S3 using the storage manager
+                        file_data = await storage_manager.download_file(file.file_path)
+                        zip_file.writestr(file.filename, file_data)
+                    except Exception as e:
+                        logger.error(f"Error adding file {file.filename} to ZIP: {str(e)}")
+                        # Continue with other files if one fails
+
+            # Reset buffer position for reading
+            zip_buffer.seek(0)
+            return {
+                "zip_buffer": zip_buffer,
+                "folder_name": folder.name
+            }
+
+        except HTTPException as e:
+            # Re-raise HTTP exceptions
+            raise e
+        except Exception as e:
+            logger.error(f"Error creating ZIP archive: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create ZIP archive: {str(e)}"
+            )
 class FileService:
     @staticmethod
     async def upload_file(

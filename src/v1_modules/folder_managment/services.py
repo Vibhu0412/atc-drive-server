@@ -365,9 +365,9 @@ class FileService:
     @staticmethod
     async def upload_file(
             db,
-            folder_id,
-            file,
-            user_id
+            folder_id: Optional[UUID],
+            file: UploadFile,
+            user_id: UUID
     ) -> FileResponse:
         """
         Upload a file to a specific folder or a default folder if no folder_id is provided.
@@ -406,7 +406,7 @@ class FileService:
                     detail="No valid folder_id could be determined"
                 )
 
-            # Fetch the folder name from the database using folder_id
+            # Fetch the folder from the database using folder_id
             folder_query = select(Folder).where(Folder.id == folder_id)
             folder_result = await db.execute(folder_query)
             folder = folder_result.scalar_one_or_none()

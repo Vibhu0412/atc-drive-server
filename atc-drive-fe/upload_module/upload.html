@@ -1,0 +1,286 @@
+
+
+<!-- Add these modal dialogs at the end of the body -->
+<!-- Modal for folder creation -->
+<div id="createFolderModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>Create New Folder</h2>
+        <div class="input-container">
+            <label for="folderName">Folder Name:</label>
+            <input type="text" id="folderName" placeholder="Enter folder name">
+        </div>
+        <button class="create-btn" onclick="createFolder()">Create</button>
+    </div>
+</div>
+
+<!-- Modal for file upload -->
+<div id="fileUploadModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>Upload File</h2>
+        <div class="file-upload-container">
+            <input type="file" id="fileInput">
+            <div id="uploadProgress" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div id="progressText">0%</div>
+            </div>
+        </div>
+        <button class="upload-btn-modal" onclick="uploadFile()">Upload</button>
+    </div>
+</div>
+
+<!-- CSS for upload functionality -->
+<style>
+    .header-buttons {
+        display: flex;
+        align-items: center;
+    }
+
+    .upload-btn, .add-user-btn {
+        padding: 8px 16px;
+        margin-right: 10px;
+        background-color: #4285f4;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .upload-btn:hover, .add-user-btn:hover {
+        background-color: #3367d6;
+    }
+
+    .upload-dropdown {
+        position: relative;
+        display: inline-block;
+    }
+
+    .upload-dropdown-content {
+        display: none;
+        position: absolute;
+        background-color: #f9f9f9;
+        min-width: 160px;
+        box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+        z-index: 1;
+        border-radius: 4px;
+    }
+
+    .upload-dropdown-content a {
+        color: black;
+        padding: 12px 16px;
+        text-decoration: none;
+        display: block;
+    }
+
+    .upload-dropdown-content a:hover {
+        background-color: #f1f1f1;
+    }
+
+    .upload-dropdown:hover .upload-dropdown-content {
+        display: block;
+    }
+
+    .input-container {
+        margin-bottom: 15px;
+    }
+
+    .input-container label {
+        display: block;
+        margin-bottom: 5px;
+    }
+
+    .input-container input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    .create-btn, .upload-btn-modal {
+        padding: 8px 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .create-btn:hover, .upload-btn-modal:hover {
+        background-color: #45a049;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 20px;
+        background-color: #f0f0f0;
+        border-radius: 10px;
+        margin-top: 10px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background-color: #4CAF50;
+        width: 0%;
+        transition: width 0.3s;
+    }
+
+    #progressText {
+        text-align: center;
+        margin-top: 5px;
+    }
+</style>
+
+<!-- Add this JavaScript for the upload functionality -->
+<script>
+    // Add these functions to your existing JavaScript
+
+    $(document).ready(function() {
+        // Add to existing document ready function
+
+        // Check if user is admin to show/hide Add User button
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+            try {
+                const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+                if (tokenPayload.sub === 'admin') {
+                    $('#addUserBtn').show();
+                }
+            } catch (e) {
+                console.error('Error parsing token:', e);
+            }
+        }
+
+        // Event handlers for new buttons
+        $('#uploadFileBtn').on('click', function(e) {
+            e.preventDefault();
+            $('#fileUploadModal').css('display', 'block');
+        });
+
+        $('#uploadFolderBtn').on('click', function(e) {
+            e.preventDefault();
+            $('#createFolderModal').css('display', 'block');
+        });
+
+        $('#addUserBtn').on('click', function() {
+            window.location.href = 'add_user.html';
+        });
+
+        // Close modals when clicking the close button
+        $('.close').on('click', function() {
+            $(this).closest('.modal').css('display', 'none');
+        });
+    });
+
+    function uploadFile() {
+        const fileInput = document.getElementById('fileInput');
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert('Please select a file to upload');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const token = localStorage.getItem('accessToken');
+
+        // Show progress bar
+        document.getElementById('uploadProgress').style.display = 'block';
+
+        // Create FormData
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Determine parent folder ID
+        let parentFolderId = null;
+        if (currentFolderId) {
+            parentFolderId = currentFolderId;
+            formData.append('parent_folder_id', parentFolderId);
+        }
+
+        // Upload using fetch with progress
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', 'http://65.2.96.95/v1/folder/file/upload', true);
+        xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+        xhr.upload.onprogress = function(e) {
+            if (e.lengthComputable) {
+                const percentComplete = Math.round((e.loaded / e.total) * 100);
+                document.getElementById('progressFill').style.width = percentComplete + '%';
+                document.getElementById('progressText').textContent = percentComplete + '%';
+            }
+        };
+
+        xhr.onload = function() {
+            if (xhr.status === 200 || xhr.status === 201) {
+                alert('File uploaded successfully');
+                $('#fileUploadModal').css('display', 'none');
+                // Refresh current view
+                if (folderHierarchy.length > 0) {
+                    displayCurrentLevel(folderHierarchy[0].name);
+                } else {
+                    fetchFoldersAndFiles();
+                }
+            } else {
+                alert('Failed to upload file: ' + xhr.responseText);
+            }
+            // Reset file input and progress
+            fileInput.value = '';
+            document.getElementById('uploadProgress').style.display = 'none';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressText').textContent = '0%';
+        };
+
+        xhr.onerror = function() {
+            alert('Error during file upload');
+            document.getElementById('uploadProgress').style.display = 'none';
+        };
+
+        xhr.send(formData);
+    }
+
+    function createFolder() {
+        const folderName = document.getElementById('folderName').value.trim();
+        if (!folderName) {
+            alert('Please enter a folder name');
+            return;
+        }
+
+        const token = localStorage.getItem('accessToken');
+
+        const payload = {
+            name: folderName
+        };
+
+        // Add parent folder ID if we're inside a folder
+        if (currentFolderId) {
+            payload.parent_folder_id = currentFolderId;
+        }
+
+        $.ajax({
+            url: 'http://65.2.96.95/v1/folder/folders',
+            type: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify(payload),
+            success: function(response) {
+                alert('Folder created successfully');
+                $('#createFolderModal').css('display', 'none');
+                document.getElementById('folderName').value = '';
+
+                // Refresh current view
+                if (folderHierarchy.length > 0) {
+                    displayCurrentLevel(folderHierarchy[0].name);
+                } else {
+                    fetchFoldersAndFiles();
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Failed to create folder: ' + (xhr.responseJSON?.message || error));
+            }
+        });
+    }
+</script>

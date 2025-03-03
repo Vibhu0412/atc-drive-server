@@ -69,25 +69,31 @@ async def list_accessible_files(
         return response.send_error_response()
 
 
+from fastapi import Form
+from uuid import UUID
+
 @folder_router.post("/file/upload")
 async def upload_file(
-    folder_id: Optional[UUID] = None,
+    folder_id: Optional[str] = Form(None),  # Accept as string first
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user_v2),
     db: AsyncSession = Depends(get_async_db)
 ):
     """Upload a file to a specific folder or a default folder if no folder_id is provided."""
     try:
+        # Parse folder_id as UUID if provided
+        parsed_folder_id = UUID(folder_id) if folder_id else None
+
         # If folder_id is provided, verify folder access
-        if folder_id is not None:
-            if not await has_folder_permission(db, current_user.id, folder_id, "can_create"):
+        if parsed_folder_id is not None:
+            if not await has_folder_permission(db, current_user.id, parsed_folder_id, "can_create"):
                 response = ResponseBuilder.from_common_response(
                     CommonResponses.unauthorized()
                 )
                 return response.send_error_response()
 
         # Upload the file
-        uploaded_file = await FileService.upload_file(db, folder_id, file, current_user.id)
+        uploaded_file = await FileService.upload_file(db, parsed_folder_id, file, current_user.id)
         response = ResponseBuilder.from_common_response(
             CommonResponses.success(
                 data=uploaded_file,
@@ -98,6 +104,14 @@ async def upload_file(
             file_name=file.filename,
             file_size=file.size
         )
+    except ValueError as e:
+        # Handle invalid UUID format
+        response = ResponseBuilder(
+            status_code=ResponseStatus.BAD_REQUEST,
+            message="Invalid folder_id format. Must be a valid UUID.",
+            data=None
+        )
+        return response.send_error_response()
     except Exception as e:
         response = ResponseBuilder(
             status_code=ResponseStatus.INTERNAL_ERROR,
@@ -105,7 +119,6 @@ async def upload_file(
             data=None
         )
         return response.send_error_response()
-
 
 @folder_router.post("/folder/share")
 async def share_folder(

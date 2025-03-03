@@ -106,15 +106,28 @@ class S3StorageManager(BaseStorageManager):
         folder_path = self.get_folder_path(folder_name)
         file_key = f"{folder_path}{file.filename}"
 
+        # Reset file position to the beginning
+        await file.seek(0)
         content = await file.read()
 
-        self.s3_client.put_object(
-            Bucket=self.bucket_name,
-            Key=file_key,
-            Body=content
-        )
+        # Upload to S3
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=file_key,
+                Body=content
+            )
 
-        return file_key
+            # Reset file position for potential subsequent operations
+            await file.seek(0)
+
+            return file_key
+        except Exception as e:
+            logger.error(f"Error uploading file to S3: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to upload file to storage"
+            )
 
     async def delete_folder(self, folder_name: str):
         """Delete a folder and all its contents from S3"""

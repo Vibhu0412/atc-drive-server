@@ -364,10 +364,10 @@ class FolderService:
 class FileService:
     @staticmethod
     async def upload_file(
-        db,
-        folder_id,
-        file,
-        user_id
+            db,
+            folder_id,
+            file,
+            user_id
     ) -> FileResponse:
         """
         Upload a file to a specific folder or a default folder if no folder_id is provided.
@@ -398,6 +398,13 @@ class FileService:
                     await db.refresh(folder)
 
                 folder_id = folder.id
+
+            # Make sure folder_id is not None at this point
+            if folder_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No valid folder_id could be determined"
+                )
 
             # Fetch the folder name from the database using folder_id
             folder_query = select(Folder).where(Folder.id == folder_id)
@@ -430,8 +437,12 @@ class FileService:
             # Use S3StorageManager to store the file in the S3 bucket
             storage_manager = get_storage_manager()
 
-            # Use the folder's name (from the database) to store the file
+            # Ensure we're using the correct folder name
             folder_name = folder.name
+            logger.info(f"Uploading file to folder: {folder_name} (ID: {folder_id})")
+
+            # Reset file position to ensure we can read the entire file
+            await file.seek(0)
             file_key = await storage_manager.store_file(folder_name, file)
 
             # Create file record

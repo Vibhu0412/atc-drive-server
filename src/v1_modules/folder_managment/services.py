@@ -365,9 +365,9 @@ class FileService:
     @staticmethod
     async def upload_file(
             db,
-            folder_id: Optional[UUID],
-            file: UploadFile,
-            user_id: UUID
+            folder_id,
+            file,
+            user_id
     ) -> FileResponse:
         """
         Upload a file to a specific folder or a default folder if no folder_id is provided.

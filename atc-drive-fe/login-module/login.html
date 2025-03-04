@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+     <link rel="stylesheet" href="../style/login.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Login</h1>
+        <form id="loginForm">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit">Login</button>
+        </form>
+        <div id="message"></div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            $('#loginForm').on('submit', function(event) {
+                event.preventDefault();
+
+                const email = $('#email').val();
+                const password = $('#password').val();
+
+                $.ajax({
+                    url: 'http://65.2.96.95/v1/auth/login',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        email: email,
+                        password: password
+                    }),
+                    success: function(response) {
+                        const role = response.detail.role.name;
+                        const accessToken = response.detail.access_token;
+
+                        // Store the access token in localStorage
+                        localStorage.setItem('accessToken', accessToken);
+
+                        // Redirect to dashboard
+                        window.location.href = '../admin-modules/dashboard.html';
+                    },
+                    error: function(xhr, status, error) {
+                        let errorMessage = 'Login failed. Please try again.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMessage = xhr.responseJSON.message;
+                        } else if (xhr.status === 0) {
+                            errorMessage = 'Unable to connect to the server. Check your network or CORS settings.';
+                        } else if (xhr.statusText) {
+                            errorMessage = xhr.statusText;
+                        }
+                        $('#message').html('<p style="color:red;">' + errorMessage + '</p>');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

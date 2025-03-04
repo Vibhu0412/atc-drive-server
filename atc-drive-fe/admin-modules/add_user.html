@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add New User - Drive Dashboard</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="../style/dashboard.css">
+    <link rel="stylesheet" href="../style/add_user.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>My Drive <span id="userRole" class="user-role"></span></h1>
+            <div class="header-buttons">
+                <button class="logout-btn" id="logoutBtn">Logout</button>
+            </div>
+        </div>
+
+        <div class="breadcrumb" id="breadcrumbContainer">
+            <a href="dashboard.html"><i class="fas fa-home"></i> Home</a>
+            <span>/</span>
+            <span>Add User</span>
+        </div>
+
+        <div class="form-container">
+            <h2 class="form-title">Create New User</h2>
+            <form id="addUserForm">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                    <div class="error-message" id="username-error"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                    <div class="error-message" id="email-error"></div>
+                </div>
+
+                <div class="form-group password-field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                    <button type="button" class="toggle-password" onclick="togglePasswordVisibility()">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <div class="error-message" id="password-error"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="role">Role</label>
+                    <select id="role" name="role" required>
+                        <option value="" disabled selected>Select a role</option>
+                        <!-- Roles will be populated dynamically -->
+                    </select>
+                    <div class="error-message" id="role-error"></div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="window.location.href='dashboard.html'">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                        Create User
+                        <span class="loading-indicator" id="loadingIndicator">
+                            <span class="spinner"></span>
+                        </span>
+                    </button>
+                </div>
+
+                <div class="success-message" id="success-message">User created successfully!</div>
+                <div class="error-message" id="form-error"></div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+
+        // Check if user is logged in and has admin role
+        $(document).ready(function() {
+            const token = localStorage.getItem('accessToken');
+            if (!token) {
+                window.location.href = '../login-module/login.html';
+                return;
+            }
+
+            // Extract user information from token
+            try {
+                const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+                const userRole = tokenPayload.sub;
+                $('#userRole').text(userRole);
+
+                // Redirect if not admin
+                if (userRole !== 'admin') {
+                    alert('You do not have permission to access this page.');
+                    window.location.href = 'dashboard.html';
+                    return;
+                }
+            } catch (e) {
+                console.error('Error parsing token:', e);
+                window.location.href = '../login-module/login.html';
+                return;
+            }
+
+            // Set up event handlers
+            $('#logoutBtn').on('click', handleLogout);
+            $('#addUserForm').on('submit', handleFormSubmit);
+
+            // Fetch roles
+            fetchRoles();
+        });
+
+        function fetchRoles() {
+            const token = localStorage.getItem('accessToken');
+
+            $.ajax({
+                url: 'http://65.2.96.95/v1/auth/roles/fetch_roles',
+                type: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                },
+                success: function(response) {
+                    const roles = response.detail;
+                    const roleSelect = document.getElementById('role');
+
+                    // Clear existing options except the placeholder
+                    roleSelect.innerHTML = '<option value="" disabled selected>Select a role</option>';
+
+                    // Add roles to select dropdown
+                    roles.forEach(role => {
+                        const option = document.createElement('option');
+                        option.value = role.id;
+                        option.textContent = role.name.replace('_', ' ');
+                        option.dataset.permissions = JSON.stringify({
+                            can_view: role.can_view,
+                            can_edit: role.can_edit,
+                            can_delete: role.can_delete,
+                            can_create: role.can_create,
+                            can_share: role.can_share
+                        });
+                        roleSelect.appendChild(option);
+                    });
+                },
+                error: function(xhr, status, error) {
+                    console.error('Failed to fetch roles:', error);
+                    document.getElementById('form-error').textContent = 'Failed to load roles. Please refresh the page.';
+                    document.getElementById('form-error').style.display = 'block';
+                }
+            });
+        }
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+
+            // Reset error messages
+            $('.error-message').hide();
+            $('#success-message').hide();
+
+            // Show loading indicator
+            $('#loadingIndicator').show();
+            $('#submitBtn').prop('disabled', true);
+
+            // Get form values
+            const username = $('#username').val().trim();
+            const email = $('#email').val().trim();
+            const password = $('#password').val();
+            const roleId = $('#role').val();
+
+            // Validate form
+            let isValid = true;
+
+            if (!username) {
+                $('#username-error').text('Username is required').show();
+                isValid = false;
+            }
+
+            if (!email) {
+                $('#email-error').text('Email is required').show();
+                isValid = false;
+            } else if (!/\S+@\S+\.\S+/.test(email)) {
+                $('#email-error').text('Please enter a valid email address').show();
+                isValid = false;
+            }
+
+            if (!password) {
+                $('#password-error').text('Password is required').show();
+                isValid = false;
+            } else if (password.length < 6) {
+                $('#password-error').text('Password must be at least 6 characters').show();
+                isValid = false;
+            }
+
+            if (!roleId) {
+                $('#role-error').text('Please select a role').show();
+                isValid = false;
+            }
+
+            if (!isValid) {
+                $('#loadingIndicator').hide();
+                $('#submitBtn').prop('disabled', false);
+                return;
+            }
+
+            // Prepare request payload
+            const payload = {
+                username: username,
+                password_hash: password,
+                email: email,
+                role_id: roleId
+            };
+
+            // Submit form data
+            const token = localStorage.getItem('accessToken');
+
+            $.ajax({
+                url: 'http://65.2.96.95/v1/auth/register',
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify(payload),
+                success: function(response) {
+                    $('#loadingIndicator').hide();
+                    $('#submitBtn').prop('disabled', false);
+                    $('#success-message').text('User created successfully!').show();
+
+                    // Reset form
+                    $('#addUserForm')[0].reset();
+
+                    // Redirect after short delay
+                    setTimeout(function() {
+                        window.location.href = '../admin-modules/dashboard.html';
+                    }, 2000);
+                },
+                error: function(xhr, status, error) {
+                    $('#loadingIndicator').hide();
+                    $('#submitBtn').prop('disabled', false);
+
+                    let errorMessage = 'Failed to create user.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+
+                    $('#form-error').text(errorMessage).show();
+                }
+            });
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('accessToken');
+            window.location.href = '../login-module/login.html';
+        }
+
+    function togglePasswordVisibility() {
+        const passwordInput = document.getElementById('password');
+        const toggleIcon = document.querySelector('.toggle-password i');
+
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            toggleIcon.classList.remove('fa-eye');
+            toggleIcon.classList.add('fa-eye-slash');
+        } else {
+            passwordInput.type = 'password';
+            toggleIcon.classList.remove('fa-eye-slash');
+            toggleIcon.classList.add('fa-eye');
+        }
+    }
+
+    </script>
+</body>
+</html>

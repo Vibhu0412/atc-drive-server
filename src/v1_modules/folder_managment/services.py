@@ -212,12 +212,15 @@ class FolderService:
                     file_result = await db.execute(file_query)
                     file = file_result.scalar_one_or_none()
                     if file:
-                        # Generate pre-signed URL for the file
-                        storage_manager: S3StorageManager = get_storage_manager()
-                        file_url = await storage_manager.generate_presigned_url(file.file_path)
-                        file_response = FileResponse.from_orm(file)
-                        file_response.file_url = file_url
-                        accessible_files.append(file_response)
+                        file_path = str(file.file_path).startswith(f"folders/user_{user_id}")
+                        # Check if the file is globally uploaded (not associated with any folder)
+                        if file_path and file.uploaded_by_id == user_id:
+                            # Generate pre-signed URL for the file
+                            storage_manager: S3StorageManager = get_storage_manager()
+                            file_url = await storage_manager.generate_presigned_url(file.file_path)
+                            file_response = FileResponse.from_orm(file)
+                            file_response.file_url = file_url
+                            accessible_files.append(file_response)
 
             folder_responses = [FolderResponse.from_orm(folder) for folder in accessible_folders]
             file_responses = [FileResponse.from_orm(file) for file in accessible_files]
@@ -269,11 +272,13 @@ class FolderService:
                         file_result = await db.execute(file_query)
                         file = file_result.scalar_one_or_none()
                         if file:
-                            # Generate pre-signed URL for the file
-                            file_url = await storage_manager.generate_presigned_url(file.file_path)
-                            file_response = FileResponse.from_orm(file)
-                            file_response.file_url = file_url
-                            user_files.append(file_response)
+                            # Check if the file is globally uploaded (not associated with any folder)
+                            if file.folder_id is None and str(file.folder_id).startswith(f"folders/user_{user_id}"):
+                                # Generate pre-signed URL for the file
+                                file_url = await storage_manager.generate_presigned_url(file.file_path)
+                                file_response = FileResponse.from_orm(file)
+                                file_response.file_url = file_url
+                                user_files.append(file_response)
 
                 if user_folders or user_files:
                     user_resources[user.username] = {

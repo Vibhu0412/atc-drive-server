@@ -440,17 +440,67 @@
             displayUsers();
         }
 
-        function displayCurrentLevel(user) {
-            const userData = usersData[user];
-            const foldersToShow = userData.folders.filter(folder => folder.parent_folder_id === currentFolderId);
-            const filesToShow = currentFolderId ?
-                userData.folders.find(folder => folder.id === currentFolderId)?.files || [] :
-                [];
+function displayCurrentLevel(user) {
+    const userData = usersData[user];
+    let currentFolder = null;
+    let foldersToShow = [];
+    let filesToShow = [];
 
-            updateBreadcrumb();
-            renderContent(foldersToShow, filesToShow);
+    // If we're at the root level for a user
+    if (folderHierarchy.length === 1 && folderHierarchy[0].name === user) {
+        // Show top-level folders for this user
+        foldersToShow = userData.folders.filter(folder => folder.parent_folder_id === null);
+    }
+    // If we're inside a folder
+    else if (currentFolderId) {
+        // Find the current folder in the hierarchy
+        findFolder(userData.folders, currentFolderId);
+    }
+
+    function findFolder(folders, targetId) {
+        // First try to find in the main folders array
+        const folder = folders.find(folder => folder.id === targetId);
+        if (folder) {
+            currentFolder = folder;
+            // Show this folder's subfolders and files
+            foldersToShow = folder.subfolders || [];
+            filesToShow = folder.files || [];
+            return true;
         }
 
+        // If not found, recursively search through subfolders
+        for (const folder of folders) {
+            if (folder.subfolders && folder.subfolders.length > 0) {
+                if (findFolderInSubfolders(folder.subfolders, targetId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function findFolderInSubfolders(subfolders, targetId) {
+        for (const subfolder of subfolders) {
+            if (subfolder.id === targetId) {
+                currentFolder = subfolder;
+                // Show this subfolder's subfolders and files
+                foldersToShow = subfolder.subfolders || [];
+                filesToShow = subfolder.files || [];
+                return true;
+            }
+            // Recursively check nested subfolders
+            if (subfolder.subfolders && subfolder.subfolders.length > 0) {
+                if (findFolderInSubfolders(subfolder.subfolders, targetId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    updateBreadcrumb();
+    renderContent(foldersToShow, filesToShow);
+}
         function renderContent(folders, files) {
             let content = '';
 

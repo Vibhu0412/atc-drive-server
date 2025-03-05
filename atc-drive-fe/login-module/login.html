@@ -43,9 +43,12 @@
 
                         // Store the access token in localStorage
                         localStorage.setItem('accessToken', accessToken);
-
-                        // Redirect to dashboard
+                        if (role === 'admin') {
                         window.location.href = '../admin-modules/dashboard.html';
+                    } else {
+                        window.location.href = '../regular-user-module/dashboard.html';
+                    }
+
                     },
                     error: function(xhr, status, error) {
                         let errorMessage = 'Login failed. Please try again.';

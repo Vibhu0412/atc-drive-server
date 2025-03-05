@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drive Dashboard</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="../style/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>My Drive <span id="userRole" class="user-role"></span></h1>
+            <div class="header-buttons">
+                <div class="upload-btn" style="display: none;">
+                    <button class="upload-btn">Upload</button>
+                    <div class="upload-btn-content">
+                        <a href="#" onclick="openFileUploadModal()">File Upload</a>
+                        <a href="#" onclick="openFolderUploadModal()">Folder Upload</a>
+                    </div>
+                </div>
+                <button class="add-user-btn" id="addUserBtn" style="display: none;">Add User</button>
+                <button class="logout-btn" id="logoutBtn">Logout</button>
+            </div>
+        </div>
+
+        <div class="breadcrumb" id="breadcrumbContainer">
+            <a href="#" id="homeLink"><i class="fas fa-home"></i> Home</a>
+        </div>
+
+        <div id="contentArea">
+            <div class="loading">Loading your files and folders...</div>
+        </div>
+    </div>
+
+    <!-- Modal for sharing -->
+    <div id="shareModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Share <span id="shareItemName"></span></h2>
+            <div class="dropdown">
+                <input type="text" id="userSearch" placeholder="Search users..." oninput="filterUsers()">
+                <div id="userDropdown" class="dropdown-content"></div>
+            </div>
+            <div class="selected-users" id="selectedUsersContainer"></div>
+            <div class="permission-buttons">
+                <button id="btn-can-edit" onclick="togglePermission('can_edit')">Edit</button>
+                <button id="btn-can-share" onclick="togglePermission('can_share')">Share</button>
+                <button id="btn-can-delete" onclick="togglePermission('can_delete')">Delete</button>
+                <button id="btn-can-create" onclick="togglePermission('can_create')">Create</button>
+            </div>
+            <button class="share-btn-modal" onclick="shareItem()">Share</button>
+        </div>
+    </div>
+
+    <!-- Modal for file upload -->
+    <div id="fileUploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeFileUploadModal()">&times;</span>
+            <h2>Upload File</h2>
+            <form id="fileUploadForm">
+                <input type="file" id="fileInput" name="file" required>
+                <button type="submit">Upload</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal for folder upload -->
+    <div id="folderUploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeFolderUploadModal()">&times;</span>
+            <h2>Upload Folder</h2>
+            <form id="folderUploadForm">
+                <input type="text" id="folderNameInput" name="name" placeholder="Folder Name" required>
+                <button type="submit">Upload</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let currentFolderId = null;
+        let folderHierarchy = [];
+        let allFolders = [];
+        let allFiles = [];
+        let userRole = '';
+        let usersData = {};
+        let allUsers = [];
+        let selectedUsers = [];
+        let selectedPermissions = [];
+        let currentItemId = null;
+        let currentItemType = null;
+        let currentItemName = null;
+
+        $(document).ready(function() {
+            // Check if user is logged in
+            const token = localStorage.getItem('accessToken');
+            if (!token) {
+                window.location.href = '../login-module/login.html';
+                return;
+            }
+
+            // Extract user information from token
+            try {
+                const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+                userRole = tokenPayload.sub;
+                $('#userRole').text(userRole);
+
+                // Show Add User button for admin
+                if (userRole === 'admin') {
+                    $('#addUserBtn').show();
+                }
+            } catch (e) {
+                console.error('Error parsing token:', e);
+            }
+
+            // Fetch folders and files
+            fetchFoldersAndFiles();
+
+            // Set up event handlers
+            $('#logoutBtn').on('click', handleLogout);
+            $('#homeLink').on('click', navigateToHome);
+            $('#addUserBtn').on('click', function() {
+                window.location.href = 'add_user.html';
+            });
+
+            // Fetch all users
+            fetchAllUsers();
+
+            // Close modal when clicking outside
+            window.onclick = function(event) {
+                const modal = document.getElementById('shareModal');
+                if (event.target === modal) {
+                    closeModal();
+                }
+
+                // Close dropdown when clicking outside
+                if (!$(event.target).closest('#userSearch, #userDropdown').length) {
+                    $('#userDropdown').removeClass('active');
+                }
+
+                // Close context menus when clicking outside
+                if (!$(event.target).closest('.context-menu').length) {
+                    $('.context-menu-content').removeClass('show');
+                }
+            };
+
+            // Close modal when clicking the close button
+            document.querySelector('.close').onclick = closeModal;
+
+            // Toggle dropdown when focusing on search input
+            $(document).on('focus', '#userSearch', function() {
+                $('#userDropdown').addClass('active');
+                populateUserDropdown(allUsers);
+            });
+
+            // Prevent clicks on the menu items from opening the folder
+            $(document).on('click', '.context-menu-content', function(e) {
+                e.stopPropagation();
+            });
+
+            // Prevent click events on the context menu from propagating to parent elements
+            $(document).on('click', '.context-menu-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const menuId = $(this).next('.context-menu-content').attr('id');
+                $('.context-menu-content').not('#' + menuId).removeClass('show');
+                $('#' + menuId).toggleClass('show');
+
+                return false; // This is important - ensures the event doesn't propagate
+            });
+
+            // Handle file upload form submission
+            $('#fileUploadForm').on('submit', function(e) {
+                e.preventDefault();
+                uploadFile();
+            });
+
+            // Handle folder upload form submission
+            $('#folderUploadForm').on('submit', function(e) {
+                e.preventDefault();
+                uploadFolder();
+            });
+        });
+
+        function fetchFoldersAndFiles() {
+            const token = localStorage.getItem('accessToken');
+
+            function processHierarchy() {
+                // Make sure all folders' files are accessible
+                allFolders.forEach(folder => {
+                    if (!folder.files) {
+                        folder.files = [];
+                    }
+
+                    // If the folder has subfolders array, process it
+                    if (folder.subfolders && Array.isArray(folder.subfolders)) {
+                        // Process each subfolder
+                        folder.subfolders.forEach(subfolder => {
+                            // Check if this subfolder already exists in allFolders
+                            const existingFolder = allFolders.find(f => f.id === subfolder.id);
+                            if (!existingFolder) {
+                                // Add subfolder to allFolders if it doesn't exist
+                                subfolder.parent_folder_id = folder.id;
+                                allFolders.push(subfolder);
+                            }
+                        });
+                    }
+
+                    // Process files in the folder
+                    if (folder.files && Array.isArray(folder.files)) {
+                        folder.files.forEach(file => {
+                            // Ensure file has necessary properties
+                            if (!file.filename && file.name) {
+                                file.filename = file.name;
+                            }
+                        });
+                    }
+                });
+            }
+
+            $.ajax({
+                url: 'http://65.2.96.95/v1/folder/files',
+                type: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                },
+                success: function(response) {
+                    // Check if the response contains folders and files
+                    if (response.detail && response.detail.length > 0) {
+                        // Process all folders, including nested ones
+                        allFolders = response.detail[0] || []; // Folders are in the first array
+                        allFiles = response.detail[1] || []; // Files are in the second array
+
+                        // Process the folder structure to ensure all folder relationships are maintained
+                        processHierarchy();
+
+                        // Display the current level (initially the root)
+                        displayCurrentLevel();
+                    } else {
+                        $('#contentArea').html('<div class="empty-message">No folders or files found.</div>');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    let errorMessage = 'Failed to load data. Please try again.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    } else if (xhr.status === 401) {
+                        // Token expired or invalid
+                        localStorage.removeItem('accessToken');
+                        window.location.href = '../login-module/login.html';
+                        return;
+                    }
+                    $('#contentArea').html('<div class="empty-message">' + errorMessage + '</div>');
+                }
+            });
+        }
+
+        function fetchAllUsers() {
+            const token = localStorage.getItem('accessToken');
+
+            $.ajax({
+                url: 'http://65.2.96.95/v1/auth/all/users',
+                type: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                },
+                success: function(response) {
+                    allUsers = response.detail;
+                },
+                error: function(xhr, status, error) {
+                    console.error('Failed to fetch users:', error);
+                }
+            });
+        }
+
+        function populateUserDropdown(users) {
+            const dropdown = document.getElementById('userDropdown');
+            dropdown.innerHTML = '';
+
+            if (users.length === 0) {
+                const noUsers = document.createElement('a');
+                noUsers.href = '#';
+                noUsers.textContent = 'No users found';
+                dropdown.appendChild(noUsers);
+                return;
+            }
+
+            users.forEach(user => {
+                // Skip users that are already selected
+                if (selectedUsers.includes(user.email)) {
+                    return;
+                }
+
+                const userElement = document.createElement('a');
+                userElement.href = '#';
+                userElement.textContent = user.email;
+                userElement.onclick = function() {
+                    selectUser(user.email);
+                    return false;
+                };
+                dropdown.appendChild(userElement);
+            });
+        }
+
+        function filterUsers() {
+            const searchTerm = document.getElementById('userSearch').value.toLowerCase();
+            const filteredUsers = allUsers.filter(user =>
+                user.email.toLowerCase().includes(searchTerm) &&
+                !selectedUsers.includes(user.email)
+            );
+            populateUserDropdown(filteredUsers);
+            $('#userDropdown').addClass('active');
+        }
+
+        function selectUser(email) {
+            if (!selectedUsers.includes(email)) {
+                selectedUsers.push(email);
+                updateSelectedUsersDisplay();
+                filterUsers(); // Refresh dropdown to remove selected user
+            }
+        }
+
+        function updateSelectedUsersDisplay() {
+            const container = document.getElementById('selectedUsersContainer');
+            container.innerHTML = '';
+
+            if (selectedUsers.length === 0) {
+                container.innerHTML = '<p>No users selected</p>';
+                return;
+            }
+
+            selectedUsers.forEach(email => {
+                const userElement = document.createElement('div');
+                userElement.className = 'selected-user-item';
+                userElement.innerHTML = `
+                    ${email}
+                    <span class="remove-user" onclick="deselectUser('${email}')">×</span>
+                `;
+                container.appendChild(userElement);
+            });
+        }
+
+        function deselectUser(email) {
+            selectedUsers = selectedUsers.filter(user => user !== email);
+            updateSelectedUsersDisplay();
+            filterUsers(); // Refresh dropdown to include the deselected user
+        }
+
+        function togglePermission(permission) {
+            const index = selectedPermissions.indexOf(permission);
+            if (index === -1) {
+                selectedPermissions.push(permission);
+            } else {
+                selectedPermissions.splice(index, 1);
+            }
+            updatePermissionButtons();
+        }
+
+        function updatePermissionButtons() {
+            const permissions = ['can_edit', 'can_share', 'can_delete', 'can_create'];
+            permissions.forEach(permission => {
+                // Replace underscore with hyphen in the button ID
+                const buttonId = `btn-${permission.replace('_', '-')}`;
+                const button = document.getElementById(buttonId);
+                if (button && selectedPermissions.includes(permission)) {
+                    button.classList.add('active');
+                } else if (button) {
+                    button.classList.remove('active');
+                }
+            });
+        }
+
+        function openShareModal(itemType, itemId, itemName) {
+            currentItemType = itemType;
+            currentItemId = itemId;
+            currentItemName = itemName;
+            selectedUsers = [];
+            selectedPermissions = [];
+
+            // Reset UI elements
+            document.getElementById('shareItemName').textContent = itemName;
+            document.getElementById('userSearch').value = '';
+            document.getElementById('selectedUsersContainer').innerHTML = '';
+            document.getElementById('userDropdown').innerHTML = '';
+            document.getElementById('userDropdown').classList.remove('active');
+            updatePermissionButtons();
+
+            // Display the modal
+            document.getElementById('shareModal').style.display = 'block';
+
+            // Stop event propagation
+            event.stopPropagation();
+        }
+
+        function closeModal() {
+            document.getElementById('shareModal').style.display = 'none';
+            document.getElementById('userDropdown').classList.remove('active');
+        }
+
+        function shareItem() {
+            if (selectedUsers.length === 0) {
+                alert('Please select at least one user to share with.');
+                return;
+            }
+
+            if (selectedPermissions.length === 0) {
+                alert('Please select at least one permission.');
+                return;
+            }
+
+            const token = localStorage.getItem('accessToken');
+
+            const payload = {
+                item_type: currentItemType,
+                item_id: currentItemId,
+                shared_with_user_emails: selectedUsers,
+                actions: selectedPermissions
+            };
+
+            console.log('Payload:', payload); // Debugging line
+
+            // Determine the correct API endpoint based on the item type
+            const apiUrl = currentItemType === 'folder'
+                ? 'http://65.2.96.95/v1/folder/folder/share'
+                : 'http://65.2.96.95/v1/folder/file/share';
+
+            $.ajax({
+                url: apiUrl,
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify(payload),
+                success: function(response) {
+                    alert('Item shared successfully');
+                    closeModal();
+                },
+                error: function(xhr, status, error) {
+                    alert('Failed to share item: ' + (xhr.responseJSON?.message || error));
+                }
+            });
+        }
+
+        function displayCurrentLevel() {
+            // Get folders at the current level
+            const foldersToShow = allFolders.filter(folder => folder.parent_folder_id === currentFolderId);
+
+            // For files, we need to check if we're at the root or in a folder
+            let filesToShow = [];
+
+            if (currentFolderId) {
+                // If we're inside a folder, find all files directly associated with this folder
+                // Look through all folders to find files for the current folder
+                const currentFolder = allFolders.find(folder => folder.id === currentFolderId);
+                if (currentFolder && currentFolder.files) {
+                    filesToShow = currentFolder.files;
+                }
+            } else {
+                // If we're at the root, show only root-level files
+                filesToShow = allFiles;
+            }
+
+            updateBreadcrumb();
+            renderContent(foldersToShow, filesToShow);
+        }
+
+        function renderContent(folders, files) {
+            let content = '';
+
+            if (folders.length > 0) {
+                content += '<h2 class="section-title">Folders</h2>';
+                content += '<div class="folder-container">';
+
+                folders.forEach(folder => {
+                    content += `
+                        <div class="folder-item" data-id="${folder.id}">
+                            <div class="folder-content" onclick="openFolder('${folder.id}', '${folder.name}')">
+                                <div class="folder-icon"><i class="fas fa-folder"></i></div>
+                                <div class="folder-name">${folder.name}</div>
+                            </div>
+                            <div class="context-menu">
+                                <button class="context-menu-btn">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div id="folder-menu-${folder.id}" class="context-menu-content">
+                                    <a href="#" onclick="event.stopPropagation(); openShareModal('folder', '${folder.id}', '${folder.name}')">Share</a>
+                                    <a href="#" onclick="event.stopPropagation(); downloadFolder('${folder.id}', '${folder.name}')">Download</a>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                content += '</div>';
+            }
+
+            if (files && files.length > 0) {
+                content += '<h2 class="section-title">Files</h2>';
+                content += '<div class="file-container">';
+
+                files.forEach(file => {
+                    content += `
+                        <div class="file-item" data-id="${file.id}">
+                            <div class="file-icon"><i class="fas fa-file-alt"></i></div>
+                            <div class="file-name">${file.filename}</div>
+                            <div class="context-menu">
+                                <button class="context-menu-btn">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div id="file-menu-${file.id}" class="context-menu-content">
+                                    <a href="#" onclick="event.stopPropagation(); downloadFile('${file.id}')">Download</a>
+                                    <a href="#" onclick="event.stopPropagation(); openShareModal('file', '${file.id}', '${file.filename}')">Share</a>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                content += '</div>';
+            }
+
+            if ((folders.length === 0 && (!files || files.length === 0))) {
+                content = '<div class="empty-message">This folder is empty.</div>';
+            }
+
+            $('#contentArea').html(content);
+        }
+
+        function openFolder(folderId, folderName) {
+            currentFolderId = folderId;
+            folderHierarchy.push({ id: folderId, name: folderName });
+            displayCurrentLevel();
+        }
+
+        function downloadFile(fileId) {
+            const token = localStorage.getItem('accessToken');
+            $.ajax({
+                url: `http://65.2.96.95/v1/folder/files/${fileId}/download`,
+                type: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                },
+                success: function(response) {
+                    const fileUrl = response.detail.file_url;
+                    window.open(fileUrl, '_blank');
+                },
+                error: function(xhr, status, error) {
+                    alert('Failed to generate download link.');
+                }
+            });
+
+            // Stop event propagation
+            event.stopPropagation();
+        }
+
+        function downloadFolder(folderId, folderName) {
+            const token = localStorage.getItem('accessToken');
+
+            // Create a temporary link element
+            const link = document.createElement('a');
+            link.href = `http://65.2.96.95/v1/folder/folders/${folderId}/download-zip`;
+            link.target = '_blank';
+
+            // Add authorization header through a fetch request
+            fetch(link.href, {
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to download folder');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                // Create a URL for the blob
+                const url = window.URL.createObjectURL(blob);
+
+                // Update the link to use the blob URL
+                link.href = url;
+                link.download = `${folderName}.zip`;
+
+                // Programmatically click the link to trigger download
+                document.body.appendChild(link);
+                link.click();
+
+                // Clean up
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+                alert('Failed to download folder: ' + error.message);
+            });
+
+            // Stop event propagation
+            event.stopPropagation();
+        }
+
+        function updateBreadcrumb() {
+            let breadcrumbHtml = '<a href="#" id="homeLink"><i class="fas fa-home"></i> Home</a>';
+
+            folderHierarchy.forEach((folder, index) => {
+                breadcrumbHtml += ' <span>/</span> ';
+
+                if (index === folderHierarchy.length - 1) {
+                    breadcrumbHtml += `<span>${folder.name}</span>`;
+                } else {
+                    breadcrumbHtml += `<a href="#" onclick="navigateToFolder(${index})">${folder.name}</a>`;
+                }
+            });
+
+            $('#breadcrumbContainer').html(breadcrumbHtml);
+            // Re-attach the event handler for the home link
+            $('#homeLink').on('click', navigateToHome);
+        }
+
+        function navigateToHome(event) {
+            event.preventDefault(); // Prevent default link behavior
+            currentFolderId = null;
+            folderHierarchy = [];
+            displayCurrentLevel(); // Reset to the root level
+        }
+
+        function navigateToFolder(index) {
+            const targetFolder = folderHierarchy[index];
+            currentFolderId = targetFolder.id;
+            folderHierarchy = folderHierarchy.slice(0, index + 1);
+            displayCurrentLevel();
+            return false;
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('accessToken');
+            window.location.href = '../login-module/login.html';
+        }
+
+        function openFileUploadModal() {
+            document.getElementById('fileUploadModal').style.display = 'block';
+        }
+
+        function closeFileUploadModal() {
+            document.getElementById('fileUploadModal').style.display = 'none';
+        }
+
+        function openFolderUploadModal() {
+            document.getElementById('folderUploadModal').style.display = 'block';
+        }
+
+        function closeFolderUploadModal() {
+            document.getElementById('folderUploadModal').style.display = 'none';
+        }
+
+        function uploadFile() {
+            const token = localStorage.getItem('accessToken');
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                alert('Please select a file to upload.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            if (currentFolderId) {
+                formData.append('folder_id', currentFolderId);
+            }
+
+            $.ajax({
+                url: 'http://65.2.96.95/v1/folder/file/upload',
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                },
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    alert('File uploaded successfully');
+                    closeFileUploadModal();
+                    fetchFoldersAndFiles(); // Refresh the file list
+                },
+                error: function(xhr, status, error) {
+                    alert('Failed to upload file: ' + (xhr.responseJSON?.message || error));
+                }
+            });
+        }
+
+        function uploadFolder() {
+            const token = localStorage.getItem('accessToken');
+            const folderName = document.getElementById('folderNameInput').value;
+
+            if (!folderName) {
+                alert('Please enter a folder name.');
+                return;
+            }
+
+            const payload = {
+                name: folderName
+            };
+
+            if (currentFolderId) {
+                payload.parent_folder_id = currentFolderId;
+            }
+
+            $.ajax({
+                url: 'http://65.2.96.95/v1/folder/folders',
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify(payload),
+                success: function(response) {
+                    alert('Folder created successfully');
+                    closeFolderUploadModal();
+                    fetchFoldersAndFiles(); // Refresh the folder list
+                },
+                error: function(xhr, status, error) {
+                    alert('Failed to create folder: ' + (xhr.responseJSON?.message || error));
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -440,7 +440,7 @@
             displayUsers();
         }
 
-function displayCurrentLevel(user) {
+        function displayCurrentLevel(user) {
     const userData = usersData[user];
     let currentFolder = null;
     let foldersToShow = [];
@@ -450,6 +450,8 @@ function displayCurrentLevel(user) {
     if (folderHierarchy.length === 1 && folderHierarchy[0].name === user) {
         // Show top-level folders for this user
         foldersToShow = userData.folders.filter(folder => folder.parent_folder_id === null);
+        // Also show top-level files (files not in any folder)
+        filesToShow = userData.files || [];
     }
     // If we're inside a folder
     else if (currentFolderId) {

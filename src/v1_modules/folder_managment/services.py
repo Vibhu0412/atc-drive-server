@@ -214,7 +214,7 @@ class FolderService:
                     if file:
                         file_path = str(file.file_path).startswith(f"folders/user_{user_id}")
                         # Check if the file is globally uploaded (not associated with any folder)
-                        if file_path and file.uploaded_by_id == user_id:
+                        if file_path and file.uploaded_by_id == user_id or permission.user_id == user_id:
                             # Generate pre-signed URL for the file
                             storage_manager: S3StorageManager = get_storage_manager()
                             file_url = await storage_manager.generate_presigned_url(file.file_path)

@@ -25,7 +25,7 @@ class FileResponse(BaseModel):
     folder_id: UUID
     uploaded_by_id: UUID
     uploaded_at: datetime
-    file_type: str
+    file_type: Optional[str] = None  # Allow None values
     file_size: int
     file_url: Optional[str] = None  # Add this field for pre-signed URL
 

@@ -272,9 +272,9 @@ class FolderService:
                         file = file_result.scalar_one_or_none()
                         if file:
                             # breakpoint()
-                            # file_path = str(file.file_path).startswith(f"folders/user_{user_id}_root")
+                            file_path = str(file.file_path).startswith(f"folders/user_{user_id}_root")
                             # Check if the file is globally uploaded (not associated with any folder)
-                            if file.uploaded_by_id == user.id or permission.user_id == user.id:
+                            if file_path and file.uploaded_by_id == user.id or permission.user_id == user.id:
                                 # Generate pre-signed URL for the file
                                 file_url = await storage_manager.generate_presigned_url(file.file_path)
                                 file_response = FileResponse.from_orm(file)

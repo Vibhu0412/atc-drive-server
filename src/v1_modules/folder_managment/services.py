@@ -197,11 +197,12 @@ class FolderService:
             subfolder_ids = set()
 
             for permission in folder_permissions:
+                breakpoint()
                 if permission.can_view:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:
                         # If the folder is a subfolder, skip adding it to the main list
-                        if folder["parent_folder_id"] is not None:
+                        if folder["parent_folder_id"] is not None and folder.get("owner_id") == user_id:
                             subfolder_ids.add(folder["id"])
                         else:
                             accessible_folders.append(folder)
@@ -271,7 +272,7 @@ class FolderService:
                         folder = await get_folder_with_contents(db, permission.folder_id)
                         if folder:
                             # If the folder is a subfolder, skip adding it to the main list
-                            if folder["parent_folder_id"] is not None:
+                            if folder["parent_folder_id"] is not None and folder.get("owner_id") == user_id:
                                 subfolder_ids.add(folder["id"])
                             else:
                                 user_folders.append(folder)

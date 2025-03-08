@@ -212,20 +212,31 @@ class FolderService:
                     file_result = await db.execute(file_query)
                     file = file_result.scalar_one_or_none()
                     if file:
-                        file_path = str(file.file_path).startswith(f"folders/user_{user_id}")
+                        file_path = str(file.file_path).startswith(f"folders/user_{user_id}_root")
                         # Check if the file is globally uploaded (not associated with any folder)
-                        if file_path and file.uploaded_by_id == user_id or permission.user_id == user_id:
-                            # Generate pre-signed URL for the file
-                            storage_manager: S3StorageManager = get_storage_manager()
-                            file_url = await storage_manager.generate_presigned_url(file.file_path)
-                            file_response = FileResponse.from_orm(file)
-                            file_response.file_url = file_url
-                            accessible_files.append(file_response)
+                        if file_path:
+                            if file.uploaded_by_id == user_id or permission.user_id == user_id:
+                                # Generate pre-signed URL for the file
+                                storage_manager: S3StorageManager = get_storage_manager()
+                                file_url = await storage_manager.generate_presigned_url(file.file_path)
+                                file_response = FileResponse.from_orm(file)
+                                file_response.file_url = file_url
+                                accessible_files.append(file_response)
+                        elif permission.user_id == user_id:
+                            file_path = str(file.file_path).startswith(f"folders/user_")
+                            if file_path:
+                                storage_manager: S3StorageManager = get_storage_manager()
+                                file_url = await storage_manager.generate_presigned_url(file.file_path)
+                                file_response = FileResponse.from_orm(file)
+                                file_response.file_url = file_url
+                                accessible_files.append(file_response)
 
-            folder_responses = [FolderResponse.from_orm(folder) for folder in accessible_folders]
-            file_responses = [FileResponse.from_orm(file) for file in accessible_files]
+            user_resources = {
+                "folders": [FolderResponse.from_orm(folder) for folder in accessible_folders],
+                "files": [FileResponse.from_orm(file) for file in accessible_files]
+            }
 
-            return folder_responses, file_responses
+            return user_resources
         else:
             # Admin logic - group by users
             # Get all users
@@ -272,16 +283,31 @@ class FolderService:
                         file = file_result.scalar_one_or_none()
                         if file:
                             file_uploaded_by_id = file.uploaded_by_id
-                            permission_user_id = permission.user_id  # Renaming for clarity
+                            permission_user_id = permission.user_id
                             file_path = str(file.file_path).startswith(
                                 (f"folders/user_{file_uploaded_by_id}_root", f"folders/user_{permission_user_id}_root")
                             )
-                            if file_path and file_uploaded_by_id == user.id or permission == user.id:
-                                # Generate pre-signed URL for the file
-                                file_url = await storage_manager.generate_presigned_url(file.file_path)
-                                file_response = FileResponse.from_orm(file)
-                                file_response.file_url = file_url
-                                user_files.append(file_response)
+                            print(file_path,"file_path")
+                            print(file_path,"file_path")
+                            print(permission,"permission")
+                            print(permission_user_id,"permission_user_id")
+                            print(user.id,"user.id")
+                            if user.username == 'admin':
+                                if file_path:
+                                    if file_uploaded_by_id == user.id or permission == user.id or permission_user_id == user.id:
+                                        # Generate pre-signed URL for the file
+                                        file_url = await storage_manager.generate_presigned_url(file.file_path)
+                                        file_response = FileResponse.from_orm(file)
+                                        file_response.file_url = file_url
+                                        user_files.append(file_response)
+                            elif user.username != 'admin':
+                                if file_path or file.uploaded_by_id != user.id:
+                                    if file_uploaded_by_id == user.id or permission == user.id or permission_user_id == user.id:
+                                        # Generate pre-signed URL for the file
+                                        file_url = await storage_manager.generate_presigned_url(file.file_path)
+                                        file_response = FileResponse.from_orm(file)
+                                        file_response.file_url = file_url
+                                        user_files.append(file_response)
 
                 if user_folders or user_files:
                     user_resources[user.username] = {

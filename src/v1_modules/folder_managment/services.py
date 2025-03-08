@@ -197,7 +197,6 @@ class FolderService:
             subfolder_ids = set()
 
             for permission in folder_permissions:
-                breakpoint()
                 if permission.can_view:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:

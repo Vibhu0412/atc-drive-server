@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, text
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import selectinload
@@ -585,7 +585,6 @@ class FileService:
         return file_url
 
 
-
 class SharingService:
     @staticmethod
     async def share_folder(
@@ -692,15 +691,6 @@ class SharingService:
                     )
                     db.add(folder_permission)
 
-                # If it's a parent folder (no parent_folder_id), share all subfolders recursively
-                if folder.parent_folder_id is None:
-                    await SharingService._share_subfolders_recursively(
-                        db,
-                        folder,
-                        shared_with_user.id,
-                        actions
-                    )
-
                 # Share all files within the folder
                 for file in folder.files:
                     # Check if the user already has file permissions
@@ -725,6 +715,37 @@ class SharingService:
                         )
                         db.add(file_permission)
 
+                # If it's a parent folder (no parent_folder_id), gather all subfolders and share them
+                if folder.parent_folder_id is None:
+                    # Get all subfolders in one query
+                    all_subfolders = await SharingService._get_all_subfolders(db, folder.id)
+
+                    # Iterate through all subfolders and share them
+                    for subfolder in all_subfolders:
+                        # Create permission for subfolder
+                        subfolder_permission = UserFolderPermission(
+                            user_id=shared_with_user.id,
+                            folder_id=subfolder.id,
+                            can_view=True,
+                            can_edit="can_edit" in actions,
+                            can_delete="can_delete" in actions,
+                            can_create="can_create" in actions,
+                            can_share="can_share" in actions
+                        )
+                        db.add(subfolder_permission)
+
+                        # Share all files in this subfolder
+                        for file in subfolder.files:
+                            file_permission = UserFilePermission(
+                                user_id=shared_with_user.id,
+                                file_id=file.id,
+                                can_view=True,
+                                can_edit="can_edit" in actions,
+                                can_delete="can_delete" in actions,
+                                can_share="can_share" in actions
+                            )
+                            db.add(file_permission)
+
             await db.commit()
             return {"message": "Folder shared successfully with all users"}
 
@@ -739,47 +760,45 @@ class SharingService:
             )
 
     @staticmethod
-    async def _share_subfolders_recursively(
-            db,
-            folder: Folder,
-            shared_with_id,
-            actions
-    ):
+    async def _get_all_subfolders(db, folder_id):
         """
-        Recursively share all subfolders and their contents with the specified permissions.
+        Get all subfolders (recursively) for a given folder in a single query.
+        Returns a list of Folder objects with their files preloaded.
         """
-        for subfolder in folder.subfolders:
-            # Create permission for subfolder
-            subfolder_permission = UserFolderPermission(
-                user_id=shared_with_id,
-                folder_id=subfolder.id,
-                can_view=True,
-                can_edit="can_edit" in actions,
-                can_delete="can_delete" in actions,
-                can_create="can_create" in actions,
-                can_share="can_share" in actions
-            )
-            db.add(subfolder_permission)
+        # Using a Common Table Expression (CTE) to recursively query all subfolders
+        # This replaces the recursive function call approach
+        stmt = """
+        WITH RECURSIVE subfolder_tree AS (
+            -- Base case: direct children of the starting folder
+            SELECT id, parent_folder_id 
+            FROM folders 
+            WHERE parent_folder_id = :folder_id
 
-            # Share files in subfolder
-            for file in subfolder.files:
-                file_permission = UserFilePermission(
-                    user_id=shared_with_id,
-                    file_id=file.id,
-                    can_view=True,
-                    can_edit="can_edit" in actions,
-                    can_delete="can_delete" in actions,
-                    can_share="can_share" in actions
-                )
-                db.add(file_permission)
+            UNION ALL
 
-            # Recursively process nested subfolders
-            await SharingService._share_subfolders_recursively(
-                db,
-                subfolder,
-                shared_with_id,
-                actions
-            )
+            -- Recursive case: children of each subfolder
+            SELECT f.id, f.parent_folder_id
+            FROM folders f
+            JOIN subfolder_tree st ON f.parent_folder_id = st.id
+        )
+        SELECT id FROM subfolder_tree
+        """
+
+        result = await db.execute(text(stmt), {"folder_id": folder_id})
+        subfolder_ids = [row[0] for row in result.fetchall()]
+
+        if not subfolder_ids:
+            return []
+
+        # Fetch all the subfolders with their files in one query
+        subfolders_query = (
+            select(Folder)
+            .where(Folder.id.in_(subfolder_ids))
+            .options(selectinload(Folder.files))
+        )
+
+        result = await db.execute(subfolders_query)
+        return result.scalars().all()
 
     @staticmethod
     async def share_file(

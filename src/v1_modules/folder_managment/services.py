@@ -272,7 +272,7 @@ class FolderService:
                         folder = await get_folder_with_contents(db, permission.folder_id)
                         if folder:
                             # If the folder is a subfolder, skip adding it to the main list
-                            if folder["parent_folder_id"] is not None and folder.get("owner_id") == user_id:
+                            if folder["parent_folder_id"] is not None and folder.get("owner_id") == user.id:
                                 subfolder_ids.add(folder["id"])
                             else:
                                 user_folders.append(folder)

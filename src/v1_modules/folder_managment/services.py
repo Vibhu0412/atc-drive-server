@@ -298,31 +298,48 @@ class FolderService:
 
                 # Track folders that are subfolders to avoid duplication
                 subfolder_ids = set()
+                processed_folder_ids = set()
 
                 for folder_permission in folder_permissions:
                     if folder_permission.can_view:
                         folder = await get_folder_with_contents(db, folder_permission.folder_id)
                         if folder:
+                            # Skip if the folder has already been processed
+                            if folder["id"] in processed_folder_ids:
+                                continue
+
+                            # If the folder is a subfolder, check if its parent has already been processed
+                            if folder["parent_folder_id"] is not None:
+                                if folder["parent_folder_id"] in processed_folder_ids:
+                                    continue
+
+                            # Add the folder to the processed set
+                            processed_folder_ids.add(folder["id"])
+
                             # If the folder is a subfolder, skip adding it to the main list
                             if folder["parent_folder_id"] is not None and folder.get("owner_id") == user.id:
                                 subfolder_ids.add(folder["id"])
+                            elif folder["parent_folder_id"] is not None and folder.get(
+                                    "owner_id") != user.id and folder_permission.user_id == user.id and folder.get(
+                                    "id") not in subfolder_ids:
+                                user_folders.append(folder)
                             else:
                                 user_folders.append(folder)
 
-                for permission in file_permissions:
-                    if permission.can_view:
-                        file_query = select(File).where(File.id == permission.file_id)
+                for file_permission in file_permissions:
+                    if file_permission.can_view:
+                        file_query = select(File).where(File.id == file_permission.file_id)
                         file_result = await db.execute(file_query)
                         file = file_result.scalar_one_or_none()
                         if file:
                             file_uploaded_by_id = file.uploaded_by_id
-                            permission_user_id = permission.user_id
+                            permission_user_id = file_permission.user_id
                             file_path = str(file.file_path).startswith(
                                 (f"folders/user_{file_uploaded_by_id}_root", f"folders/user_{permission_user_id}_root")
                             )
                             if user.username == 'admin':
                                 if file_path:
-                                    if file_uploaded_by_id == user.id or permission == user.id or permission_user_id == user.id:
+                                    if file_uploaded_by_id == user.id or file_permission == user.id or permission_user_id == user.id:
                                         # Generate pre-signed URL for the file
                                         file_url = await storage_manager.generate_presigned_url(file.file_path)
                                         file_response = FileResponse.from_orm(file)
@@ -340,7 +357,7 @@ class FolderService:
                                     folder_permission_result = await db.execute(folder_permission_query)
                                     folder_permission = folder_permission_result.scalar_one_or_none()
                                     if not folder_permission:
-                                        if permission == user.id or permission_user_id == user.id:
+                                        if file_permission == user.id or permission_user_id == user.id:
                                             # Generate pre-signed URL for the file
                                             file_url = await storage_manager.generate_presigned_url(file.file_path)
                                             file_response = FileResponse.from_orm(file)

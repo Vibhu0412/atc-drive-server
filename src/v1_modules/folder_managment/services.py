@@ -193,35 +193,29 @@ class FolderService:
             accessible_folders = []
             accessible_files = []
 
-            # Track folders that are subfolders to avoid duplication
-            subfolder_ids = set()
-            processed_folder_ids = set()
+            # First pass: collect all folder IDs and their parent IDs
+            all_folders = {}
+            parent_child_map = {}
 
             for permission in folder_permissions:
                 if permission.can_view:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:
-                        # Skip if the folder has already been processed
-                        if folder["id"] in processed_folder_ids:
-                            continue
-
-                        # If the folder is a subfolder, check if its parent has already been processed
+                        all_folders[folder["id"]] = folder
                         if folder["parent_folder_id"] is not None:
-                            if folder["parent_folder_id"] in processed_folder_ids:
-                                continue
+                            if folder["parent_folder_id"] not in parent_child_map:
+                                parent_child_map[folder["parent_folder_id"]] = []
+                            parent_child_map[folder["parent_folder_id"]].append(folder["id"])
 
-                        # Add the folder to the processed set
-                        processed_folder_ids.add(folder["id"])
+            # Second pass: add only top-level folders or folders without accessible parents
+            for folder_id, folder in all_folders.items():
+                parent_id = folder["parent_folder_id"]
+                # Add folder if it's a top-level folder or its parent is not accessible
+                if parent_id is None or parent_id not in all_folders:
+                    accessible_folders.append(folder)
 
-                        # If the folder is a subfolder, skip adding it to the main list
-                        if folder["parent_folder_id"] is not None and folder.get("owner_id") == user_id:
-                            subfolder_ids.add(folder["id"])
-                        elif folder["parent_folder_id"] is not None and folder.get(
-                                "owner_id") != user_id and permission.user_id == user_id and folder.get(
-                                "id") not in subfolder_ids:
-                            accessible_folders.append(folder)
-                        else:
-                            accessible_folders.append(folder)
+            # Track folders that are subfolders to avoid duplication
+            processed_folder_ids = set(f["id"] for f in accessible_folders)
 
             for permission in file_permissions:
                 if permission.can_view:
@@ -293,39 +287,29 @@ class FolderService:
                 file_permissions_result = await db.execute(file_permissions_query)
                 file_permissions = file_permissions_result.scalars().all()
 
-                user_folders = []
-                user_files = []
+                # First pass: collect all folder IDs and their parent IDs
+                all_folders = {}
+                parent_child_map = {}
 
-                # Track folders that are subfolders to avoid duplication
-                subfolder_ids = set()
-                processed_folder_ids = set()
-
-                for folder_permission in folder_permissions:
-                    if folder_permission.can_view:
-                        folder = await get_folder_with_contents(db, folder_permission.folder_id)
+                for permission in folder_permissions:
+                    if permission.can_view:
+                        folder = await get_folder_with_contents(db, permission.folder_id)
                         if folder:
-                            # Skip if the folder has already been processed
-                            if folder["id"] in processed_folder_ids:
-                                continue
-
-                            # If the folder is a subfolder, check if its parent has already been processed
+                            all_folders[folder["id"]] = folder
                             if folder["parent_folder_id"] is not None:
-                                if folder["parent_folder_id"] in processed_folder_ids:
-                                    continue
+                                if folder["parent_folder_id"] not in parent_child_map:
+                                    parent_child_map[folder["parent_folder_id"]] = []
+                                parent_child_map[folder["parent_folder_id"]].append(folder["id"])
 
-                            # Add the folder to the processed set
-                            processed_folder_ids.add(folder["id"])
+                # Second pass: add only top-level folders or folders without accessible parents
+                user_folders = []
+                for folder_id, folder in all_folders.items():
+                    parent_id = folder["parent_folder_id"]
+                    # Add folder if it's a top-level folder or its parent is not accessible
+                    if parent_id is None or parent_id not in all_folders:
+                        user_folders.append(folder)
 
-                            # If the folder is a subfolder, skip adding it to the main list
-                            if folder["parent_folder_id"] is not None and folder.get("owner_id") == user.id:
-                                subfolder_ids.add(folder["id"])
-                            elif folder["parent_folder_id"] is not None and folder.get(
-                                    "owner_id") != user.id and folder_permission.user_id == user.id and folder.get(
-                                    "id") not in subfolder_ids:
-                                user_folders.append(folder)
-                            else:
-                                user_folders.append(folder)
-
+                user_files = []
                 for file_permission in file_permissions:
                     if file_permission.can_view:
                         file_query = select(File).where(File.id == file_permission.file_id)
@@ -339,7 +323,7 @@ class FolderService:
                             )
                             if user.username == 'admin':
                                 if file_path:
-                                    if file_uploaded_by_id == user.id or file_permission == user.id or permission_user_id == user.id:
+                                    if file_uploaded_by_id == user.id or file_permission.user_id == user.id:
                                         # Generate pre-signed URL for the file
                                         file_url = await storage_manager.generate_presigned_url(file.file_path)
                                         file_response = FileResponse.from_orm(file)
@@ -357,7 +341,7 @@ class FolderService:
                                     folder_permission_result = await db.execute(folder_permission_query)
                                     folder_permission = folder_permission_result.scalar_one_or_none()
                                     if not folder_permission:
-                                        if file_permission == user.id or permission_user_id == user.id:
+                                        if file_permission.user_id == user.id:
                                             # Generate pre-signed URL for the file
                                             file_url = await storage_manager.generate_presigned_url(file.file_path)
                                             file_response = FileResponse.from_orm(file)

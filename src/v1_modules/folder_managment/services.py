@@ -195,14 +195,31 @@ class FolderService:
 
             # Track folders that are subfolders to avoid duplication
             subfolder_ids = set()
+            processed_folder_ids = set()
 
             for permission in folder_permissions:
                 if permission.can_view:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:
+                        # Skip if the folder has already been processed
+                        if folder["id"] in processed_folder_ids:
+                            continue
+
+                        # If the folder is a subfolder, check if its parent has already been processed
+                        if folder["parent_folder_id"] is not None:
+                            if folder["parent_folder_id"] in processed_folder_ids:
+                                continue
+
+                        # Add the folder to the processed set
+                        processed_folder_ids.add(folder["id"])
+
                         # If the folder is a subfolder, skip adding it to the main list
                         if folder["parent_folder_id"] is not None and folder.get("owner_id") == user_id:
                             subfolder_ids.add(folder["id"])
+                        elif folder["parent_folder_id"] is not None and folder.get(
+                                "owner_id") != user_id and permission.user_id == user_id and folder.get(
+                                "id") not in subfolder_ids:
+                            accessible_folders.append(folder)
                         else:
                             accessible_folders.append(folder)
 
@@ -230,6 +247,22 @@ class FolderService:
                                 file_response = FileResponse.from_orm(file)
                                 file_response.file_url = file_url
                                 accessible_files.append(file_response)
+                            elif user_id != file.uploaded_by_id:
+                                folder_permission_query = select(UserFolderPermission).where(
+                                    and_(
+                                        UserFolderPermission.folder_id == file.folder_id,
+                                        UserFolderPermission.user_id == user_id,
+                                        UserFolderPermission.can_view == True
+                                    )
+                                )
+                                folder_permission_result = await db.execute(folder_permission_query)
+                                folder_permission = folder_permission_result.first()
+                                if not folder_permission:
+                                    storage_manager: S3StorageManager = get_storage_manager()
+                                    file_url = await storage_manager.generate_presigned_url(file.file_path)
+                                    file_response = FileResponse.from_orm(file)
+                                    file_response.file_url = file_url
+                                    accessible_files.append(file_response)
 
             user_resources = {
                 "folders": [FolderResponse.from_orm(folder) for folder in accessible_folders],
@@ -266,9 +299,9 @@ class FolderService:
                 # Track folders that are subfolders to avoid duplication
                 subfolder_ids = set()
 
-                for permission in folder_permissions:
-                    if permission.can_view:
-                        folder = await get_folder_with_contents(db, permission.folder_id)
+                for folder_permission in folder_permissions:
+                    if folder_permission.can_view:
+                        folder = await get_folder_with_contents(db, folder_permission.folder_id)
                         if folder:
                             # If the folder is a subfolder, skip adding it to the main list
                             if folder["parent_folder_id"] is not None and folder.get("owner_id") == user.id:
@@ -287,11 +320,6 @@ class FolderService:
                             file_path = str(file.file_path).startswith(
                                 (f"folders/user_{file_uploaded_by_id}_root", f"folders/user_{permission_user_id}_root")
                             )
-                            print(file_path,"file_path")
-                            print(file_path,"file_path")
-                            print(permission,"permission")
-                            print(permission_user_id,"permission_user_id")
-                            print(user.id,"user.id")
                             if user.username == 'admin':
                                 if file_path:
                                     if file_uploaded_by_id == user.id or permission == user.id or permission_user_id == user.id:
@@ -302,12 +330,22 @@ class FolderService:
                                         user_files.append(file_response)
                             elif user.username != 'admin':
                                 if file_path or file.uploaded_by_id != user.id:
-                                    if file_uploaded_by_id == user.id or permission == user.id or permission_user_id == user.id:
-                                        # Generate pre-signed URL for the file
-                                        file_url = await storage_manager.generate_presigned_url(file.file_path)
-                                        file_response = FileResponse.from_orm(file)
-                                        file_response.file_url = file_url
-                                        user_files.append(file_response)
+                                    folder_permission_query = select(UserFolderPermission).where(
+                                        and_(
+                                            UserFolderPermission.folder_id == file.folder_id,
+                                            UserFolderPermission.user_id == user.id,
+                                            UserFolderPermission.can_view == True
+                                        )
+                                    )
+                                    folder_permission_result = await db.execute(folder_permission_query)
+                                    folder_permission = folder_permission_result.scalar_one_or_none()
+                                    if not folder_permission:
+                                        if permission == user.id or permission_user_id == user.id:
+                                            # Generate pre-signed URL for the file
+                                            file_url = await storage_manager.generate_presigned_url(file.file_path)
+                                            file_response = FileResponse.from_orm(file)
+                                            file_response.file_url = file_url
+                                            user_files.append(file_response)
 
                 if user_folders or user_files:
                     user_resources[user.username] = {
@@ -655,18 +693,16 @@ class SharingService:
                 sharing_record_result = await db.execute(sharing_record_query)
                 sharing_record = sharing_record_result.scalar_one_or_none()
 
-                if sharing_record:
-                    continue
-
-                # Create sharing record
-                shared_item = SharedItem(
-                    item_type="folder",
-                    item_id=folder_id,
-                    shared_by=shared_by_id,
-                    shared_with=shared_with_user.id,
-                    share_type="full" if folder.parent_folder_id is None else "specific"
-                )
-                db.add(shared_item)
+                if not sharing_record:
+                    # Create sharing record if it doesn't exist
+                    shared_item = SharedItem(
+                        item_type="folder",
+                        item_id=folder_id,
+                        shared_by=shared_by_id,
+                        shared_with=shared_with_user.id,
+                        share_type="full" if folder.parent_folder_id is None else "specific"
+                    )
+                    db.add(shared_item)
 
                 # Check if the user already has folder permissions
                 folder_permission_query = select(UserFolderPermission).where(
@@ -678,7 +714,13 @@ class SharingService:
                 folder_permission_result = await db.execute(folder_permission_query)
                 folder_permission = folder_permission_result.scalar_one_or_none()
 
-                if not folder_permission:
+                if folder_permission:
+                    # Update existing permission with new actions
+                    folder_permission.can_edit = "can_edit" in actions
+                    folder_permission.can_delete = "can_delete" in actions
+                    folder_permission.can_create = "can_create" in actions
+                    folder_permission.can_share = "can_share" in actions
+                else:
                     # Create folder permission for shared user
                     folder_permission = UserFolderPermission(
                         user_id=shared_with_user.id,
@@ -703,7 +745,12 @@ class SharingService:
                     file_permission_result = await db.execute(file_permission_query)
                     file_permission = file_permission_result.scalar_one_or_none()
 
-                    if not file_permission:
+                    if file_permission:
+                        # Update existing file permission
+                        file_permission.can_edit = "can_edit" in actions
+                        file_permission.can_delete = "can_delete" in actions
+                        file_permission.can_share = "can_share" in actions
+                    else:
                         # Create file permission for shared user
                         file_permission = UserFilePermission(
                             user_id=shared_with_user.id,
@@ -722,29 +769,63 @@ class SharingService:
 
                     # Iterate through all subfolders and share them
                     for subfolder in all_subfolders:
-                        # Create permission for subfolder
-                        subfolder_permission = UserFolderPermission(
-                            user_id=shared_with_user.id,
-                            folder_id=subfolder.id,
-                            can_view=True,
-                            can_edit="can_edit" in actions,
-                            can_delete="can_delete" in actions,
-                            can_create="can_create" in actions,
-                            can_share="can_share" in actions
+                        # Check if subfolder permission exists
+                        subfolder_permission_query = select(UserFolderPermission).where(
+                            and_(
+                                UserFolderPermission.folder_id == subfolder.id,
+                                UserFolderPermission.user_id == shared_with_user.id
+                            )
                         )
-                        db.add(subfolder_permission)
+                        subfolder_permission_result = await db.execute(subfolder_permission_query)
+                        subfolder_permission = subfolder_permission_result.scalar_one_or_none()
 
-                        # Share all files in this subfolder
-                        for file in subfolder.files:
-                            file_permission = UserFilePermission(
+                        if subfolder_permission:
+                            # Update existing subfolder permission
+                            subfolder_permission.can_edit = "can_edit" in actions
+                            subfolder_permission.can_delete = "can_delete" in actions
+                            subfolder_permission.can_create = "can_create" in actions
+                            subfolder_permission.can_share = "can_share" in actions
+                        else:
+                            # Create permission for subfolder
+                            subfolder_permission = UserFolderPermission(
                                 user_id=shared_with_user.id,
-                                file_id=file.id,
+                                folder_id=subfolder.id,
                                 can_view=True,
                                 can_edit="can_edit" in actions,
                                 can_delete="can_delete" in actions,
+                                can_create="can_create" in actions,
                                 can_share="can_share" in actions
                             )
-                            db.add(file_permission)
+                            db.add(subfolder_permission)
+
+                        # Share all files in this subfolder
+                        for file in subfolder.files:
+                            # Check if file permission exists
+                            file_permission_query = select(UserFilePermission).where(
+                                and_(
+                                    UserFilePermission.file_id == file.id,
+                                    UserFilePermission.user_id == shared_with_user.id
+                                )
+                            )
+                            file_permission_result = await db.execute(file_permission_query)
+                            file_permission = file_permission_result.scalar_one_or_none()
+
+                            if file_permission:
+                                # Update existing file permission
+                                file_permission.can_edit = "can_edit" in actions
+                                file_permission.can_delete = "can_delete" in actions
+                                file_permission.can_share = "can_share" in actions
+                            else:
+                                # Create new file permission
+                                file_permission = UserFilePermission(
+                                    user_id=shared_with_user.id,
+                                    file_id=file.id,
+                                    can_view=True,
+                                    can_edit="can_edit" in actions,
+                                    can_delete="can_delete" in actions,
+                                    can_share="can_share" in actions
+                                )
+                                db.add(file_permission)
 
             await db.commit()
             return {"message": "Folder shared successfully with all users"}

@@ -187,39 +187,6 @@
         function fetchFoldersAndFiles() {
             const token = localStorage.getItem('accessToken');
 
-            function processHierarchy() {
-                // Make sure all folders' files are accessible
-                allFolders.forEach(folder => {
-                    if (!folder.files) {
-                        folder.files = [];
-                    }
-
-                    // If the folder has subfolders array, process it
-                    if (folder.subfolders && Array.isArray(folder.subfolders)) {
-                        // Process each subfolder
-                        folder.subfolders.forEach(subfolder => {
-                            // Check if this subfolder already exists in allFolders
-                            const existingFolder = allFolders.find(f => f.id === subfolder.id);
-                            if (!existingFolder) {
-                                // Add subfolder to allFolders if it doesn't exist
-                                subfolder.parent_folder_id = folder.id;
-                                allFolders.push(subfolder);
-                            }
-                        });
-                    }
-
-                    // Process files in the folder
-                    if (folder.files && Array.isArray(folder.files)) {
-                        folder.files.forEach(file => {
-                            // Ensure file has necessary properties
-                            if (!file.filename && file.name) {
-                                file.filename = file.name;
-                            }
-                        });
-                    }
-                });
-            }
-
             $.ajax({
                 url: 'http://65.2.96.95/v1/folder/files',
                 type: 'GET',
@@ -228,15 +195,12 @@
                 },
                 success: function(response) {
                     // Check if the response contains folders and files
-                    if (response.detail && response.detail.length > 0) {
-                        // Process all folders, including nested ones
-                        allFolders = response.detail[0] || []; // Folders are in the first array
-                        allFiles = response.detail[1] || []; // Files are in the second array
+                    if (response.detail && response.detail.folders) {
+                        // The structure has changed - now using detail.folders and detail.files
+                        allFolders = response.detail.folders || [];
+                        allFiles = response.detail.files || [];
 
-                        // Process the folder structure to ensure all folder relationships are maintained
-                        processHierarchy();
-
-                        // Display the current level (initially the root)
+                        // Process and display the current level
                         displayCurrentLevel();
                     } else {
                         $('#contentArea').html('<div class="empty-message">No folders or files found.</div>');
@@ -452,15 +416,14 @@
             let filesToShow = [];
 
             if (currentFolderId) {
-                // If we're inside a folder, find all files directly associated with this folder
-                // Look through all folders to find files for the current folder
+                // If we're inside a folder, find the current folder and its files
                 const currentFolder = allFolders.find(folder => folder.id === currentFolderId);
                 if (currentFolder && currentFolder.files) {
                     filesToShow = currentFolder.files;
                 }
             } else {
                 // If we're at the root, show only root-level files
-                filesToShow = allFiles;
+                filesToShow = allFiles || [];
             }
 
             updateBreadcrumb();

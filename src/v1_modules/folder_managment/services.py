@@ -438,8 +438,8 @@ class FolderService:
     @staticmethod
     async def delete_folder(
             db,
-            folder_id: UUID,
-            current_user: User
+            folder_id,
+            current_user
     ):
         """Delete a folder and its contents if the user has permission."""
         try:

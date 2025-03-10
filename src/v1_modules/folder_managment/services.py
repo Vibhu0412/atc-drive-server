@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import select, and_, text
+from sqlalchemy import select, and_, text, delete
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import selectinload
@@ -438,8 +438,8 @@ class FolderService:
     @staticmethod
     async def delete_folder(
             db,
-            folder_id,
-            current_user
+            folder_id: UUID,
+            current_user: User
     ):
         """Delete a folder and its contents if the user has permission."""
         try:
@@ -471,8 +471,28 @@ class FolderService:
                     detail="Insufficient permissions to delete this folder"
                 )
 
-            # Delete the folder and its contents from storage
+            # Delete all permissions associated with the folder
+            await db.execute(
+                delete(UserFolderPermission).where(UserFolderPermission.folder_id == folder_id)
+            )
+
+            # Delete all files in the folder
+            files_query = select(File).where(File.folder_id == folder_id)
+            files_result = await db.execute(files_query)
+            files = files_result.scalars().all()
+
             storage_manager = get_storage_manager()
+            for file in files:
+                # Delete file permissions
+                await db.execute(
+                    delete(UserFilePermission).where(UserFilePermission.file_id == file.id)
+                )
+                # Delete the file from storage
+                await storage_manager.delete_file(file.file_path)
+                # Delete the file from the database
+                await db.delete(file)
+
+            # Delete the folder from storage
             await storage_manager.delete_folder(folder.name)
 
             # Delete the folder from the database
@@ -715,6 +735,12 @@ class FileService:
                     detail="Insufficient permissions to delete this file"
                 )
 
+            # Delete all permissions associated with the file
+            await db.execute(
+                delete(UserFilePermission).where(UserFilePermission.file_id == file_id)
+            )
+            await db.commit()
+
             # Delete the file from storage
             storage_manager = get_storage_manager()
             await storage_manager.delete_file(file.file_path)
@@ -734,6 +760,7 @@ class FileService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to delete file: {str(e)}"
             )
+
 class SharingService:
     @staticmethod
     async def share_folder(

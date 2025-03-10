@@ -762,6 +762,54 @@
                 }
             });
         }
+        const body = document.body;
+
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        // Highlight the entire screen when a file is dragged over it
+        ['dragenter', 'dragover'].forEach(eventName => {
+            body.addEventListener(eventName, () => highlight(body), false);
+        });
+
+        // Remove the highlight when the file is dragged out or dropped
+        ['dragleave', 'drop'].forEach(eventName => {
+            body.addEventListener(eventName, () => unhighlight(body), false);
+        });
+
+        // Handle file drop
+        body.addEventListener('drop', handleDrop, false);
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function highlight(element) {
+            // Add a full-screen overlay for visual feedback
+            const overlay = document.createElement('div');
+            overlay.className = 'full-screen-drag-over';
+            document.body.appendChild(overlay);
+        }
+
+        function unhighlight(element) {
+            // Remove the full-screen overlay
+            const overlays = document.querySelectorAll('.full-screen-drag-over');
+            overlays.forEach(overlay => overlay.remove());
+        }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+
+            if (files.length > 0) {
+                const fileInput = document.getElementById('fileInput');
+                fileInput.files = files; // Assign the dropped files to the file input
+                uploadFile(); // Call the existing upload function
+            }
+        }
 
     </script>
 </body>

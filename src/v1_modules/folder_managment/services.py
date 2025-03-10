@@ -349,7 +349,7 @@ class FolderService:
                                             user_files.append(file_response)
 
                 if user_folders or user_files:
-                    user_resources[user.username] = {
+                    user_resources[f"{user.username} (ID: {user.id})"] = {
                         "folders": [FolderResponse.from_orm(folder) for folder in user_folders],
                         "files": [FileResponse.from_orm(file) for file in user_files]
                     }

@@ -1070,6 +1070,7 @@ class SharingService:
                     logger.warning(f"User with email {shared_with_email} not found")
                     continue
 
+                # Check if the file is already shared with the user
                 sharing_record_query = select(SharedItem).where(
                     and_(
                         SharedItem.item_type == "file",
@@ -1080,29 +1081,43 @@ class SharingService:
                 sharing_record_result = await db.execute(sharing_record_query)
                 sharing_record = sharing_record_result.scalar_one_or_none()
 
-                if sharing_record:
-                    continue
+                if not sharing_record:
+                    # Create sharing record if it doesn't exist
+                    shared_item = SharedItem(
+                        item_type="file",
+                        item_id=file_id,
+                        shared_by=shared_by_id,
+                        shared_with=shared_with_user.id,
+                        share_type="specific"
+                    )
+                    db.add(shared_item)
 
-                # Create sharing record
-                shared_item = SharedItem(
-                    item_type="file",
-                    item_id=file_id,
-                    shared_by=shared_by_id,
-                    shared_with=shared_with_user.id,
-                    share_type="specific"
+                # Check if the user already has file permissions
+                file_permission_query = select(UserFilePermission).where(
+                    and_(
+                        UserFilePermission.file_id == file_id,
+                        UserFilePermission.user_id == shared_with_user.id
+                    )
                 )
-                db.add(shared_item)
+                file_permission_result = await db.execute(file_permission_query)
+                file_permission = file_permission_result.scalar_one_or_none()
 
-                # Create file permission for shared user
-                file_permission = UserFilePermission(
-                    user_id=shared_with_user.id,
-                    file_id=file_id,
-                    can_view=True,
-                    can_edit="can_edit" in actions,
-                    can_delete="can_delete" in actions,
-                    can_share="can_share" in actions
-                )
-                db.add(file_permission)
+                if file_permission:
+                    # Update existing file permission
+                    file_permission.can_edit = "can_edit" in actions
+                    file_permission.can_delete = "can_delete" in actions
+                    file_permission.can_share = "can_share" in actions
+                else:
+                    # Create file permission for shared user
+                    file_permission = UserFilePermission(
+                        user_id=shared_with_user.id,
+                        file_id=file_id,
+                        can_view=True,
+                        can_edit="can_edit" in actions,
+                        can_delete="can_delete" in actions,
+                        can_share="can_share" in actions
+                    )
+                    db.add(file_permission)
 
             await db.commit()
             return {"message": "File shared successfully with all users"}

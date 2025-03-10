@@ -434,6 +434,62 @@ class FolderService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to create ZIP archive: {str(e)}"
             )
+
+    @staticmethod
+    async def delete_folder(
+            db,
+            folder_id,
+            current_user
+    ):
+        """Delete a folder and its contents if the user has permission."""
+        try:
+            # Fetch the folder from the database
+            folder_query = select(Folder).where(Folder.id == folder_id)
+            folder_result = await db.execute(folder_query)
+            folder = folder_result.scalar_one_or_none()
+
+            if not folder:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Folder not found"
+                )
+
+            # Check if the user has permission to delete the folder
+            permission_query = select(UserFolderPermission).where(
+                and_(
+                    UserFolderPermission.folder_id == folder_id,
+                    UserFolderPermission.user_id == current_user.id,
+                    UserFolderPermission.can_delete == True
+                )
+            )
+            permission_result = await db.execute(permission_query)
+            permission = permission_result.scalar_one_or_none()
+
+            if not permission and folder.owner_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Insufficient permissions to delete this folder"
+                )
+
+            # Delete the folder and its contents from storage
+            storage_manager = get_storage_manager()
+            await storage_manager.delete_folder(folder.name)
+
+            # Delete the folder from the database
+            await db.delete(folder)
+            await db.commit()
+
+            return {"message": "Folder deleted successfully"}
+
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Error deleting folder: {str(e)}")
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete folder: {str(e)}"
+            )
 class FileService:
     @staticmethod
     async def upload_file(
@@ -623,7 +679,61 @@ class FileService:
 
         return file_url
 
+    @staticmethod
+    async def delete_file(
+            db,
+            file_id: UUID,
+            current_user: User
+    ):
+        """Delete a file if the user has permission."""
+        try:
+            # Fetch the file from the database
+            file_query = select(File).where(File.id == file_id)
+            file_result = await db.execute(file_query)
+            file = file_result.scalar_one_or_none()
 
+            if not file:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="File not found"
+                )
+
+            # Check if the user has permission to delete the file
+            permission_query = select(UserFilePermission).where(
+                and_(
+                    UserFilePermission.file_id == file_id,
+                    UserFilePermission.user_id == current_user.id,
+                    UserFilePermission.can_delete == True
+                )
+            )
+            permission_result = await db.execute(permission_query)
+            permission = permission_result.scalar_one_or_none()
+
+            if not permission and file.uploaded_by_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Insufficient permissions to delete this file"
+                )
+
+            # Delete the file from storage
+            storage_manager = get_storage_manager()
+            await storage_manager.delete_file(file.file_path)
+
+            # Delete the file from the database
+            await db.delete(file)
+            await db.commit()
+
+            return {"message": "File deleted successfully"}
+
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Error deleting file: {str(e)}")
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete file: {str(e)}"
+            )
 class SharingService:
     @staticmethod
     async def share_folder(

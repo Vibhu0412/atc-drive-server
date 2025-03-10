@@ -285,3 +285,61 @@ async def download_folder_as_zip(
             message=str(e),
             data=None
         ).send_error_response()
+
+########################################## DELETE apis #############################################
+
+@folder_router.delete("/folders/{folder_id}")
+async def delete_folder(
+    folder_id: UUID,
+    current_user: User = Depends(get_current_user_v2),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Delete a folder and its contents."""
+    try:
+        result = await FolderService.delete_folder(db, folder_id, current_user)
+        return ResponseBuilder.from_common_response(
+            CommonResponses.success(
+                data=result,
+                message="Folder deleted successfully"
+            )
+        ).send_success_response()
+    except HTTPException as e:
+        return ResponseBuilder(
+            status_code=e.status_code,
+            message=e.detail,
+            data=None
+        ).send_error_response()
+    except Exception as e:
+        return ResponseBuilder(
+            status_code=ResponseStatus.INTERNAL_ERROR,
+            message=str(e),
+            data=None
+        ).send_error_response()
+
+@folder_router.delete("/files/{file_id}")
+async def delete_file(
+    file_id: UUID,
+    current_user: User = Depends(get_current_user_v2),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Delete a specific file."""
+    try:
+        result = await FileService.delete_file(db, file_id, current_user)
+        return ResponseBuilder.from_common_response(
+            CommonResponses.success(
+                data=result,
+                message="File deleted successfully"
+            )
+        ).send_success_response()
+    except HTTPException as e:
+        return ResponseBuilder(
+            status_code=e.status_code,
+            message=e.detail,
+            data=None
+        ).send_error_response()
+    except Exception as e:
+        return ResponseBuilder(
+            status_code=ResponseStatus.INTERNAL_ERROR,
+            message=str(e),
+            data=None
+        ).send_error_response()

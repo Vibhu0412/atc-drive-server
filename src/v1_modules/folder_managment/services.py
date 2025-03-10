@@ -682,8 +682,8 @@ class FileService:
     @staticmethod
     async def delete_file(
             db,
-            file_id: UUID,
-            current_user: User
+            file_id,
+            current_user
     ):
         """Delete a file if the user has permission."""
         try:

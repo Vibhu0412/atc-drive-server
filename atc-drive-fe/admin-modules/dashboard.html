@@ -608,21 +608,21 @@
 
                 files.forEach(file => {
                     content += `
-    <div class="file-item" data-id="${file.id}">
-        <div class="file-icon"><i class="fas fa-file-alt"></i></div>
-        <div class="file-name">${file.filename}</div>
-        <div class="context-menu">
-            <button class="context-menu-btn">
-                <i class="fas fa-ellipsis-v"></i>
-            </button>
-            <div id="file-menu-${file.id}" class="context-menu-content">
-                <a href="#" onclick="event.stopPropagation(); downloadFile('${file.id}')">Download</a>
-                <a href="#" onclick="event.stopPropagation(); openShareModal('file', '${file.id}', '${file.filename}')">Share</a>
-                <a href="#" onclick="event.stopPropagation(); deleteFile('${file.id}', '${file.filename}')">Delete</a>
-            </div>
-        </div>
-    </div>
-`;
+                        <div class="file-item" data-id="${file.id}">
+                            <div class="file-icon"><i class="fas fa-file-alt"></i></div>
+                            <div class="file-name">${file.filename}</div>
+                            <div class="context-menu">
+                                <button class="context-menu-btn">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div id="file-menu-${file.id}" class="context-menu-content">
+                                    <a href="#" onclick="event.stopPropagation(); downloadFile('${file.id}')">Download</a>
+                                    <a href="#" onclick="event.stopPropagation(); openShareModal('file', '${file.id}', '${file.filename}')">Share</a>
+                                    <a href="#" onclick="event.stopPropagation(); deleteFile('${file.id}', '${file.filename}')">Delete</a>
+                                </div>
+                            </div>
+                        </div>
+                    `;
                 });
 
                 content += '</div>';

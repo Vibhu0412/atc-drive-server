@@ -188,37 +188,52 @@
             const token = localStorage.getItem('accessToken');
 
             function processHierarchy() {
-                // Make sure all folders' files are accessible
-                allFolders.forEach(folder => {
-                    if (!folder.files) {
-                        folder.files = [];
-                    }
+    // Create a recursive function to process nested folders
+    function processNestedFolders(folder) {
+        // Ensure folder has files array
+        if (!folder.files) {
+            folder.files = [];
+        }
 
-                    // If the folder has subfolders array, process it
-                    if (folder.subfolders && Array.isArray(folder.subfolders)) {
-                        // Process each subfolder
-                        folder.subfolders.forEach(subfolder => {
-                            // Check if this subfolder already exists in allFolders
-                            const existingFolder = allFolders.find(f => f.id === subfolder.id);
-                            if (!existingFolder) {
-                                // Add subfolder to allFolders if it doesn't exist
-                                subfolder.parent_folder_id = folder.id;
-                                allFolders.push(subfolder);
-                            }
-                        });
-                    }
+        // Process subfolders
+        if (folder.subfolders && Array.isArray(folder.subfolders)) {
+            folder.subfolders.forEach(subfolder => {
+                // Set parent_folder_id if not already set
+                subfolder.parent_folder_id = folder.id;
 
-                    // Process files in the folder
-                    if (folder.files && Array.isArray(folder.files)) {
-                        folder.files.forEach(file => {
-                            // Ensure file has necessary properties
-                            if (!file.filename && file.name) {
-                                file.filename = file.name;
-                            }
-                        });
-                    }
-                });
-            }
+                // Check if subfolder already exists in allFolders
+                const existingFolderIndex = allFolders.findIndex(f => f.id === subfolder.id);
+                if (existingFolderIndex === -1) {
+                    // Add to allFolders if it doesn't exist
+                    allFolders.push(subfolder);
+                } else {
+                    // Update the existing folder with any new information
+                    allFolders[existingFolderIndex] = {
+                        ...allFolders[existingFolderIndex],
+                        ...subfolder
+                    };
+                }
+
+                // Recursively process this subfolder
+                processNestedFolders(subfolder);
+            });
+        }
+
+        // Process files
+        if (folder.files && Array.isArray(folder.files)) {
+            folder.files.forEach(file => {
+                if (!file.filename && file.name) {
+                    file.filename = file.name;
+                }
+            });
+        }
+    }
+
+    // Process each top-level folder
+    allFolders.forEach(folder => {
+        processNestedFolders(folder);
+    });
+}
 
             $.ajax({
                 url: 'http://65.2.96.95/v1/folder/files',
@@ -488,6 +503,7 @@
                                 <div id="folder-menu-${folder.id}" class="context-menu-content">
                                     <a href="#" onclick="event.stopPropagation(); openShareModal('folder', '${folder.id}', '${folder.name}')">Share</a>
                                     <a href="#" onclick="event.stopPropagation(); downloadFolder('${folder.id}', '${folder.name}')">Download</a>
+                                    <a href="#" onclick="event.stopPropagation(); deleteFolder('${folder.id}', '${folder.name}')">Delete</a>
                                 </div>
                             </div>
                         </div>
@@ -513,6 +529,7 @@
                                 <div id="file-menu-${file.id}" class="context-menu-content">
                                     <a href="#" onclick="event.stopPropagation(); downloadFile('${file.id}')">Download</a>
                                     <a href="#" onclick="event.stopPropagation(); openShareModal('file', '${file.id}', '${file.filename}')">Share</a>
+                                    <a href="#" onclick="event.stopPropagation(); deleteFile('${file.id}', '${file.filename}')">Delete</a>
                                 </div>
                             </div>
                         </div>
@@ -534,6 +551,56 @@
             folderHierarchy.push({ id: folderId, name: folderName });
             displayCurrentLevel();
         }
+        function deleteFolder(folderId, folderName) {
+    if (!confirm(`Are you sure you want to delete the folder "${folderName}"?`)) {
+        return;
+    }
+
+    const token = localStorage.getItem('accessToken');
+
+    $.ajax({
+        url: `http://65.2.96.95/v1/folder/folders/${folderId}`,
+        type: 'DELETE',
+        headers: {
+            'Authorization': 'Bearer ' + token
+        },
+        success: function(response) {
+            alert('Folder deleted successfully');
+            fetchFoldersAndFiles(); // Refresh the folder and file list
+        },
+        error: function(xhr, status, error) {
+            alert('Failed to delete folder: ' + (xhr.responseJSON?.message || error));
+        }
+    });
+
+    // Stop event propagation
+    event.stopPropagation();
+}
+function deleteFile(fileId, fileName) {
+    if (!confirm(`Are you sure you want to delete the file "${fileName}"?`)) {
+        return;
+    }
+
+    const token = localStorage.getItem('accessToken');
+
+    $.ajax({
+        url: `http://65.2.96.95/v1/folder/files/${fileId}`,
+        type: 'DELETE',
+        headers: {
+            'Authorization': 'Bearer ' + token
+        },
+        success: function(response) {
+            alert('File deleted successfully');
+            fetchFoldersAndFiles(); // Refresh the folder and file list
+        },
+        error: function(xhr, status, error) {
+            alert('Failed to delete file: ' + (xhr.responseJSON?.message || error));
+        }
+    });
+
+    // Stop event propagation
+    event.stopPropagation();
+}
 
         function downloadFile(fileId) {
             const token = localStorage.getItem('accessToken');

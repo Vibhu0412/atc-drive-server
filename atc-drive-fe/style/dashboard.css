@@ -381,7 +381,7 @@ body {
 /* Toaster container */
 #toaster-container {
     position: fixed;
-    top: 20px; /* Changed from bottom to top */
+    top: 20px;
     right: 20px;
     z-index: 9999;
     display: flex;
@@ -437,10 +437,10 @@ body {
     justify-content: center;
     border-radius: 50%;
     transition: background-color 0.2s;
-    position: absolute; /* Added to position the close button */
-    right: 10px; /* Position from the right */
-    top: 50%; /* Center vertically */
-    transform: translateY(-50%); /* Center vertically */
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
 }
 
 .toaster-close:hover {
@@ -456,6 +456,7 @@ body {
     height: 3px;
     width: 100%;
     background-color: rgba(255, 255, 255, 0.3);
+    transition: width linear;
 }
 
 /* Toaster types */

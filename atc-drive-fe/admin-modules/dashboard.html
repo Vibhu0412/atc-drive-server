@@ -185,7 +185,73 @@
                 uploadFolder();
             });
         });
+        function showToaster(message, type = 'error', duration = 3000) {
+            // Create a new toaster element
+            const toaster = document.createElement('div');
+            toaster.className = `toaster ${type}`;
 
+            // Create the message and close button elements
+            const messageEl = document.createElement('span');
+            messageEl.className = 'toaster-message';
+            messageEl.textContent = message;
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'toaster-close';
+            closeBtn.innerHTML = '&times;';
+            closeBtn.addEventListener('click', () => {
+                removeToaster(toaster);
+            });
+
+            // Create progress bar
+            const progressBar = document.createElement('div');
+            progressBar.className = 'toaster-progress';
+
+            // Append elements to toaster
+            toaster.appendChild(messageEl);
+            toaster.appendChild(closeBtn);
+            toaster.appendChild(progressBar);
+
+            // Add toaster to container or create container if it doesn't exist
+            let toasterContainer = document.getElementById('toaster-container');
+            if (!toasterContainer) {
+                toasterContainer = document.createElement('div');
+                toasterContainer.id = 'toaster-container';
+                document.body.appendChild(toasterContainer);
+            }
+
+            toasterContainer.appendChild(toaster);
+
+            // Show the toaster with animation
+            setTimeout(() => {
+                toaster.classList.add('show');
+                // Animate progress bar
+                progressBar.style.transition = `width ${duration}ms linear`;
+                progressBar.style.width = '0%';
+            }, 10);
+
+            // Hide and remove the toaster after the specified duration
+            if (duration > 0) {
+                setTimeout(() => {
+                    removeToaster(toaster);
+                }, duration);
+            }
+        }
+
+        function removeToaster(toaster) {
+            toaster.classList.remove('show');
+            // Wait for the fade out animation to complete before removing
+            setTimeout(() => {
+                if (toaster.parentNode) {
+                    toaster.parentNode.removeChild(toaster);
+                }
+
+                // Remove container if empty
+                const container = document.getElementById('toaster-container');
+                if (container && container.childNodes.length === 0) {
+                    document.body.removeChild(container);
+                }
+            }, 300); // Match this to the CSS transition time
+        }
         function fetchFoldersAndFiles() {
             const token = localStorage.getItem('accessToken');
 
@@ -209,6 +275,7 @@
                         window.location.href = '../login-module/login.html';
                         return;
                     }
+                    showToaster(errorMessage, 'error');
                     $('#contentArea').html('<div class="empty-message">' + errorMessage + '</div>');
                 }
             });
@@ -284,7 +351,7 @@
             container.innerHTML = '';
 
             if (selectedUsers.length === 0) {
-                container.innerHTML = '<p>No users selected</p>';
+                showToaster('Please select at least one user to share with.', 'warning');
                 return;
             }
 
@@ -363,7 +430,7 @@
             }
 
             if (selectedPermissions.length === 0) {
-                alert('Please select at least one permission.');
+                showToaster('Please select at least one permission.', 'warning');
                 return;
             }
 
@@ -392,11 +459,12 @@
                 },
                 data: JSON.stringify(payload),
                 success: function(response) {
-                    alert('Item shared successfully');
+                    showToaster('Item shared successfully', 'success');
+
                     closeModal();
                 },
                 error: function(xhr, status, error) {
-                    alert('Failed to share item: ' + (xhr.responseJSON?.message || error));
+                    showToaster('Failed to share item ' + (xhr.responseJSON?.message || error), 'error');
                 }
             });
 }
@@ -524,6 +592,7 @@
                                 <div id="folder-menu-${folder.id}" class="context-menu-content">
                                     <a href="#" onclick="event.stopPropagation(); openShareModal('folder', '${folder.id}', '${folder.name}')">Share</a>
                                     <a href="#" onclick="event.stopPropagation(); downloadFolder('${folder.id}', '${folder.name}')">Download</a>
+                                    <a href="#" onclick="event.stopPropagation(); deleteFolder('${folder.id}', '${folder.name}')">Delete</a>
                                 </div>
                             </div>
                         </div>
@@ -539,20 +608,21 @@
 
                 files.forEach(file => {
                     content += `
-                        <div class="file-item" data-id="${file.id}">
-                            <div class="file-icon"><i class="fas fa-file-alt"></i></div>
-                            <div class="file-name">${file.filename}</div>
-                            <div class="context-menu">
-                                <button class="context-menu-btn">
-                                    <i class="fas fa-ellipsis-v"></i>
-                                </button>
-                                <div id="file-menu-${file.id}" class="context-menu-content">
-                                    <a href="#" onclick="event.stopPropagation(); downloadFile('${file.id}')">Download</a>
-                                    <a href="#" onclick="event.stopPropagation(); openShareModal('file', '${file.id}', '${file.filename}')">Share</a>
-                                </div>
-                            </div>
-                        </div>
-                    `;
+    <div class="file-item" data-id="${file.id}">
+        <div class="file-icon"><i class="fas fa-file-alt"></i></div>
+        <div class="file-name">${file.filename}</div>
+        <div class="context-menu">
+            <button class="context-menu-btn">
+                <i class="fas fa-ellipsis-v"></i>
+            </button>
+            <div id="file-menu-${file.id}" class="context-menu-content">
+                <a href="#" onclick="event.stopPropagation(); downloadFile('${file.id}')">Download</a>
+                <a href="#" onclick="event.stopPropagation(); openShareModal('file', '${file.id}', '${file.filename}')">Share</a>
+                <a href="#" onclick="event.stopPropagation(); deleteFile('${file.id}', '${file.filename}')">Delete</a>
+            </div>
+        </div>
+    </div>
+`;
                 });
 
                 content += '</div>';
@@ -584,7 +654,7 @@
                     window.open(fileUrl, '_blank');
                 },
                 error: function(xhr, status, error) {
-                    alert('Failed to generate download link.');
+                    showToaster('Failed to generate download link.', 'error');
                 }
             });
 
@@ -629,7 +699,7 @@
                 window.URL.revokeObjectURL(url);
             })
             .catch(error => {
-                alert('Failed to download folder: ' + error.message);
+                showToaster('Failed to download folder: ' + error.message, 'error');
             });
 
             // Stop event propagation
@@ -690,14 +760,17 @@
             document.getElementById('folderUploadModal').style.display = 'none';
         }
 
-        function uploadFile() {
+        function uploadFile(file) {
             const token = localStorage.getItem('accessToken');
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
 
             if (!file) {
-                alert('Please select a file to upload.');
-                return;
+                const fileInput = document.getElementById('fileInput');
+                file = fileInput.files[0];
+
+                if (!file) {
+                    showToaster('Please select a file to upload.', 'warning', 5000);
+                    return;
+                }
             }
 
             const formData = new FormData();
@@ -717,12 +790,12 @@
                 processData: false,
                 contentType: false,
                 success: function(response) {
-                    alert('File uploaded successfully');
+                    showToaster('File uploaded successfully', 'success');
                     closeFileUploadModal();
                     fetchFoldersAndFiles(); // Refresh the file list
                 },
                 error: function(xhr, status, error) {
-                    alert('Failed to upload file: ' + (xhr.responseJSON?.message || error));
+                    showToaster('Failed to upload file: ' + (xhr.responseJSON?.message || error), 'error');
                 }
             });
         }
@@ -732,10 +805,9 @@
             const folderName = document.getElementById('folderNameInput').value;
 
             if (!folderName) {
-                alert('Please enter a folder name.');
-                return;
-            }
-
+                    showToaster('Please enter a folder name.', 'warning');
+                    return;
+                }
             const payload = {
                 name: folderName
             };
@@ -753,12 +825,12 @@
                 },
                 data: JSON.stringify(payload),
                 success: function(response) {
-                    alert('Folder created successfully');
+                    showToaster('Folder created successfully', 'success');
                     closeFolderUploadModal();
                     fetchFoldersAndFiles(); // Refresh the folder list
                 },
                 error: function(xhr, status, error) {
-                    alert('Failed to create folder: ' + (xhr.responseJSON?.message || error));
+                    showToaster('Failed to create folder: ' + (xhr.responseJSON?.message || error), 'error');
                 }
             });
         }
@@ -799,15 +871,68 @@
             const overlays = document.querySelectorAll('.full-screen-drag-over');
             overlays.forEach(overlay => overlay.remove());
         }
+        function deleteFolder(folderId, folderName) {
+            if (!confirm(`Are you sure you want to delete the folder "${folderName}"?`)) {
+                return;
+            }
 
+            const token = localStorage.getItem('accessToken');
+
+            $.ajax({
+                url: `http://65.2.96.95/v1/folder/folders/${folderId}`,
+                type: 'DELETE',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                },
+                success: function(response) {
+                    showToaster('Folder deleted successfully', 'info', 3000);
+                    fetchFoldersAndFiles(); // Refresh the folder and file list
+                },
+                error: function(xhr, status, error) {
+                    showToaster('Failed to delete folder: ' + (xhr.responseJSON?.message || error), 'error', 4000);
+                }
+            });
+
+            // Stop event propagation
+            event.stopPropagation();
+        }
+        function deleteFile(fileId, fileName) {
+                if (!confirm(`Are you sure you want to delete the file "${fileName}"?`)) {
+                    return;
+                }
+
+                const token = localStorage.getItem('accessToken');
+
+                $.ajax({
+                    url: `http://65.2.96.95/v1/folder/files/${fileId}`,
+                    type: 'DELETE',
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    },
+                    success: function(response) {
+                        showToaster('File deleted successfully', 'info', 3000);
+                        fetchFoldersAndFiles(); // Refresh the folder and file list
+                    },
+                    error: function(xhr, status, error) {
+                        showToaster('Failed to delete file: ' + (xhr.responseJSON?.message || error), 'error', 4000);
+                    }
+                });
+
+                // Stop event propagation
+                event.stopPropagation();
+            }
         function handleDrop(e) {
             const dt = e.dataTransfer;
             const files = dt.files;
 
-            if (files.length > 0) {
-                const fileInput = document.getElementById('fileInput');
-                fileInput.files = files; // Assign the dropped files to the file input
-                uploadFile(); // Call the existing upload function
+            if (files.length > 0 && files.length <= 10) {
+                // Loop through all the files and upload them
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    uploadFile(file); // Call the upload function for each file
+                }
+            } else {
+                showToaster('You can upload up to 10 files only.', 'warning');
             }
         }
 

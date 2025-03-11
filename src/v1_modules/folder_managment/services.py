@@ -193,6 +193,9 @@ class FolderService:
             accessible_folders = []
             accessible_files = []
 
+            # Track processed file IDs to avoid duplication
+            processed_file_ids = set()
+
             # First pass: collect all folder IDs and their parent IDs
             all_folders = {}
             parent_child_map = {}
@@ -222,7 +225,7 @@ class FolderService:
                     file_query = select(File).where(File.id == permission.file_id)
                     file_result = await db.execute(file_query)
                     file = file_result.scalar_one_or_none()
-                    if file:
+                    if file and file.id not in processed_file_ids:
                         file_path = str(file.file_path).startswith(f"folders/user_{user_id}_root")
                         # Check if the file is globally uploaded (not associated with any folder)
                         if file_path:
@@ -233,6 +236,7 @@ class FolderService:
                                 file_response = FileResponse.from_orm(file)
                                 file_response.file_url = file_url
                                 accessible_files.append(file_response)
+                                processed_file_ids.add(file.id)
                         elif permission.user_id == user_id:
                             file_path = str(file.file_path).startswith(f"folders/user_")
                             if file_path:
@@ -241,6 +245,7 @@ class FolderService:
                                 file_response = FileResponse.from_orm(file)
                                 file_response.file_url = file_url
                                 accessible_files.append(file_response)
+                                processed_file_ids.add(file.id)
                             elif user_id != file.uploaded_by_id:
                                 folder_permission_query = select(UserFolderPermission).where(
                                     and_(
@@ -257,6 +262,7 @@ class FolderService:
                                     file_response = FileResponse.from_orm(file)
                                     file_response.file_url = file_url
                                     accessible_files.append(file_response)
+                                    processed_file_ids.add(file.id)
 
             user_resources = {
                 "folders": [FolderResponse.from_orm(folder) for folder in accessible_folders],
@@ -287,6 +293,9 @@ class FolderService:
                 file_permissions_result = await db.execute(file_permissions_query)
                 file_permissions = file_permissions_result.scalars().all()
 
+                # Track processed file IDs to avoid duplication
+                processed_file_ids = set()
+
                 # First pass: collect all folder IDs and their parent IDs
                 all_folders = {}
                 parent_child_map = {}
@@ -315,7 +324,7 @@ class FolderService:
                         file_query = select(File).where(File.id == file_permission.file_id)
                         file_result = await db.execute(file_query)
                         file = file_result.scalar_one_or_none()
-                        if file:
+                        if file and file.id not in processed_file_ids:
                             file_uploaded_by_id = file.uploaded_by_id
                             permission_user_id = file_permission.user_id
                             file_path = str(file.file_path).startswith(
@@ -329,6 +338,7 @@ class FolderService:
                                         file_response = FileResponse.from_orm(file)
                                         file_response.file_url = file_url
                                         user_files.append(file_response)
+                                        processed_file_ids.add(file.id)
                             elif user.username != 'admin':
                                 if file_path or file.uploaded_by_id != user.id:
                                     folder_permission_query = select(UserFolderPermission).where(
@@ -347,9 +357,10 @@ class FolderService:
                                             file_response = FileResponse.from_orm(file)
                                             file_response.file_url = file_url
                                             user_files.append(file_response)
+                                            processed_file_ids.add(file.id)
 
                 if user_folders or user_files:
-                    user_resources[user.username]  = {
+                    user_resources[user.username] = {
                         "folders": [FolderResponse.from_orm(folder) for folder in user_folders],
                         "files": [FileResponse.from_orm(file) for file in user_files]
                     }

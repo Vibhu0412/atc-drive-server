@@ -460,15 +460,23 @@
         }
 
         function displayCurrentLevel() {
-            // Get folders at the current level
-            const foldersToShow = allFolders.filter(folder => folder.parent_folder_id === currentFolderId);
 
+            // Get folders at the current level
+            let foldersToShow = allFolders.filter(folder => folder.parent_folder_id === currentFolderId);
+
+            // If we're at root level, also show folders with parents that don't exist
+            if (!currentFolderId) {
+                const existingFolderIds = allFolders.map(folder => folder.id);
+                const orphanedFolders = allFolders.filter(folder =>
+                    folder.parent_folder_id && !existingFolderIds.includes(folder.parent_folder_id)
+                );
+                foldersToShow = [...foldersToShow, ...orphanedFolders];
+            }
             // For files, we need to check if we're at the root or in a folder
             let filesToShow = [];
 
             if (currentFolderId) {
                 // If we're inside a folder, find all files directly associated with this folder
-                // Look through all folders to find files for the current folder
                 const currentFolder = allFolders.find(folder => folder.id === currentFolderId);
                 if (currentFolder && currentFolder.files) {
                     filesToShow = currentFolder.files;
@@ -483,68 +491,68 @@
         }
 
         function renderContent(folders, files) {
-            let content = '';
+    let content = '';
 
-            if (folders.length > 0) {
-                content += '<h2 class="section-title">Folders</h2>';
-                content += '<div class="folder-container">';
+    if (folders.length > 0) {
+        content += '<h2 class="section-title">Folders</h2>';
+        content += '<div class="folder-container">';
 
-                folders.forEach(folder => {
-                    content += `
-                        <div class="folder-item" data-id="${folder.id}">
-                            <div class="folder-content" onclick="openFolder('${folder.id}', '${folder.name}')">
-                                <div class="folder-icon"><i class="fas fa-folder"></i></div>
-                                <div class="folder-name">${folder.name}</div>
-                            </div>
-                            <div class="context-menu">
-                                <button class="context-menu-btn">
-                                    <i class="fas fa-ellipsis-v"></i>
-                                </button>
-                                <div id="folder-menu-${folder.id}" class="context-menu-content">
-                                    <a href="#" onclick="event.stopPropagation(); openShareModal('folder', '${folder.id}', '${folder.name}')">Share</a>
-                                    <a href="#" onclick="event.stopPropagation(); downloadFolder('${folder.id}', '${folder.name}')">Download</a>
-                                    <a href="#" onclick="event.stopPropagation(); deleteFolder('${folder.id}', '${folder.name}')">Delete</a>
-                                </div>
-                            </div>
+        folders.forEach(folder => {
+            content += `
+                <div class="folder-item" data-id="${folder.id}">
+                    <div class="folder-content" onclick="openFolder('${folder.id}', '${folder.name}')">
+                        <div class="folder-icon"><i class="fas fa-folder"></i></div>
+                        <div class="folder-name">${folder.name}</div>
+                    </div>
+                    <div class="context-menu">
+                        <button class="context-menu-btn">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <div id="folder-menu-${folder.id}" class="context-menu-content">
+                            <a href="#" onclick="event.stopPropagation(); openShareModal('folder', '${folder.id}', '${folder.name}')">Share</a>
+                            <a href="#" onclick="event.stopPropagation(); downloadFolder('${folder.id}', '${folder.name}')">Download</a>
+                            <a href="#" onclick="event.stopPropagation(); deleteFolder('${folder.id}', '${folder.name}')">Delete</a>
                         </div>
-                    `;
-                });
+                    </div>
+                </div>
+            `;
+        });
 
-                content += '</div>';
-            }
+        content += '</div>';
+    }
 
-            if (files && files.length > 0) {
-                content += '<h2 class="section-title">Files</h2>';
-                content += '<div class="file-container">';
+    if (files && files.length > 0) {
+        content += '<h2 class="section-title">Files</h2>';
+        content += '<div class="file-container">';
 
-                files.forEach(file => {
-                    content += `
-                        <div class="file-item" data-id="${file.id}">
-                            <div class="file-icon"><i class="fas fa-file-alt"></i></div>
-                            <div class="file-name">${file.filename}</div>
-                            <div class="context-menu">
-                                <button class="context-menu-btn">
-                                    <i class="fas fa-ellipsis-v"></i>
-                                </button>
-                                <div id="file-menu-${file.id}" class="context-menu-content">
-                                    <a href="#" onclick="event.stopPropagation(); downloadFile('${file.id}')">Download</a>
-                                    <a href="#" onclick="event.stopPropagation(); openShareModal('file', '${file.id}', '${file.filename}')">Share</a>
-                                    <a href="#" onclick="event.stopPropagation(); deleteFile('${file.id}', '${file.filename}')">Delete</a>
-                                </div>
-                            </div>
+        files.forEach(file => {
+            content += `
+                <div class="file-item" data-id="${file.id}">
+                    <div class="file-icon"><i class="fas fa-file-alt"></i></div>
+                    <div class="file-name">${file.filename}</div>
+                    <div class="context-menu">
+                        <button class="context-menu-btn">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <div id="file-menu-${file.id}" class="context-menu-content">
+                            <a href="#" onclick="event.stopPropagation(); downloadFile('${file.id}')">Download</a>
+                            <a href="#" onclick="event.stopPropagation(); openShareModal('file', '${file.id}', '${file.filename}')">Share</a>
+                            <a href="#" onclick="event.stopPropagation(); deleteFile('${file.id}', '${file.filename}')">Delete</a>
                         </div>
-                    `;
-                });
+                    </div>
+                </div>
+            `;
+        });
 
-                content += '</div>';
-            }
+        content += '</div>';
+    }
 
-            if ((folders.length === 0 && (!files || files.length === 0))) {
-                content = '<div class="empty-message">This folder is empty.</div>';
-            }
+    if ((folders.length === 0 && (!files || files.length === 0))) {
+        content = '<div class="empty-message">This folder is empty.</div>';
+    }
 
-            $('#contentArea').html(content);
-        }
+    $('#contentArea').html(content);
+}
 
         function openFolder(folderId, folderName) {
             currentFolderId = folderId;

@@ -378,3 +378,131 @@ body {
     pointer-events: none; /* Allow clicks to pass through */
     border: 3px dashed #0078D7;
 }
+/* Toaster container */
+#toaster-container {
+    position: fixed;
+    top: 20px; /* Changed from bottom to top */
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 350px;
+}
+
+/* Base toaster styling */
+.toaster {
+    background-color: white;
+    color: #333;
+    padding: 12px 16px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    min-width: 280px;
+    max-width: 350px;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    border-left: 4px solid #ccc;
+}
+
+.toaster.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* Message styling */
+.toaster-message {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    padding-right: 10px;
+}
+
+/* Close button styling */
+.toaster-close {
+    background: none;
+    border: none;
+    color: rgba(0, 0, 0, 0.5);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+    position: absolute; /* Added to position the close button */
+    right: 10px; /* Position from the right */
+    top: 50%; /* Center vertically */
+    transform: translateY(-50%); /* Center vertically */
+}
+
+.toaster-close:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.7);
+}
+
+/* Progress bar */
+.toaster-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Toaster types */
+.toaster.error {
+    background-color: #fff2f2;
+    border-left-color: #ff4444;
+}
+
+.toaster.error .toaster-progress {
+    background-color: #ff4444;
+}
+
+.toaster.success {
+    background-color: #f0fff4;
+    border-left-color: #38c172;
+}
+
+.toaster.success .toaster-progress {
+    background-color: #38c172;
+}
+
+.toaster.warning {
+    background-color: #fffaf0;
+    border-left-color: #f6993f;
+}
+
+.toaster.warning .toaster-progress {
+    background-color: #f6993f;
+}
+
+.toaster.info {
+    background-color: #ebf8ff;
+    border-left-color: #3490dc;
+}
+
+.toaster.info .toaster-progress {
+    background-color: #3490dc;
+}
+
+/* Add a little bounce animation for better UX */
+@keyframes toasterBounce {
+    0% { transform: translateX(100%); }
+    60% { transform: translateX(-5px); }
+    100% { transform: translateX(0); }
+}
+
+.toaster.show {
+    opacity: 1;
+    animation: toasterBounce 0.5s forwards;
+}

@@ -799,15 +799,20 @@
             document.getElementById('folderUploadModal').style.display = 'none';
         }
 
-        function uploadFile() {
+        function uploadFile(file) {
             const token = localStorage.getItem('accessToken');
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
+
 
             if (!file) {
-                showToaster('Please select a file to upload.','warning', 5000);
-                return;
+                const fileInput = document.getElementById('fileInput');
+                file = fileInput.files[0];
+
+                if (!file) {
+                    showToaster('Please select a file to upload.', 'warning', 5000);
+                    return;
+                }
             }
+
 
             const formData = new FormData();
             formData.append('file', file);

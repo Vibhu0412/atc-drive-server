@@ -180,9 +180,6 @@ class FolderService:
         For admin users, groups items by username.
         """
         storage_manager = get_storage_manager()
-        # Track files that have been added to the response to prevent duplication
-        processed_response_file_ids = set()
-
         if not is_admin:
             # Original logic for regular users
             folder_permissions_query = select(UserFolderPermission).where(UserFolderPermission.user_id == user_id)
@@ -196,9 +193,6 @@ class FolderService:
             accessible_folders = []
             accessible_files = []
 
-            # Track processed file IDs to avoid duplication during permission checking
-            processed_file_ids = set()
-
             # First pass: collect all folder IDs and their parent IDs
             all_folders = {}
             parent_child_map = {}
@@ -207,10 +201,6 @@ class FolderService:
                 if permission.can_view:
                     folder = await get_folder_with_contents(db, permission.folder_id)
                     if folder:
-                        # Track files in folders to avoid duplication in final response
-                        if "files" in folder:
-                            for file in folder["files"]:
-                                processed_response_file_ids.add(file["id"])
                         all_folders[folder["id"]] = folder
                         if folder["parent_folder_id"] is not None:
                             if folder["parent_folder_id"] not in parent_child_map:
@@ -232,7 +222,7 @@ class FolderService:
                     file_query = select(File).where(File.id == permission.file_id)
                     file_result = await db.execute(file_query)
                     file = file_result.scalar_one_or_none()
-                    if file and file.id not in processed_file_ids:
+                    if file:
                         file_path = str(file.file_path).startswith(f"folders/user_{user_id}_root")
                         # Check if the file is globally uploaded (not associated with any folder)
                         if file_path:
@@ -242,11 +232,7 @@ class FolderService:
                                 file_url = await storage_manager.generate_presigned_url(file.file_path)
                                 file_response = FileResponse.from_orm(file)
                                 file_response.file_url = file_url
-                                # Only add to accessible_files if not already in the response
-                                if file.id not in processed_response_file_ids:
-                                    accessible_files.append(file_response)
-                                    processed_response_file_ids.add(file.id)
-                                processed_file_ids.add(file.id)
+                                accessible_files.append(file_response)
                         elif permission.user_id == user_id:
                             file_path = str(file.file_path).startswith(f"folders/user_")
                             if file_path:
@@ -254,11 +240,7 @@ class FolderService:
                                 file_url = await storage_manager.generate_presigned_url(file.file_path)
                                 file_response = FileResponse.from_orm(file)
                                 file_response.file_url = file_url
-                                # Only add to accessible_files if not already in the response
-                                if file.id not in processed_response_file_ids:
-                                    accessible_files.append(file_response)
-                                    processed_response_file_ids.add(file.id)
-                                processed_file_ids.add(file.id)
+                                accessible_files.append(file_response)
                             elif user_id != file.uploaded_by_id:
                                 folder_permission_query = select(UserFolderPermission).where(
                                     and_(
@@ -274,11 +256,7 @@ class FolderService:
                                     file_url = await storage_manager.generate_presigned_url(file.file_path)
                                     file_response = FileResponse.from_orm(file)
                                     file_response.file_url = file_url
-                                    # Only add to accessible_files if not already in the response
-                                    if file.id not in processed_response_file_ids:
-                                        accessible_files.append(file_response)
-                                        processed_response_file_ids.add(file.id)
-                                    processed_file_ids.add(file.id)
+                                    accessible_files.append(file_response)
 
             user_resources = {
                 "folders": [FolderResponse.from_orm(folder) for folder in accessible_folders],
@@ -295,9 +273,6 @@ class FolderService:
             user_resources = {}
 
             for user in users:
-                # Reset the response file tracking for each user
-                processed_response_file_ids = set()
-
                 # Get folders for this user
                 folder_permissions_query = select(UserFolderPermission).where(
                     UserFolderPermission.user_id == user.id
@@ -312,9 +287,6 @@ class FolderService:
                 file_permissions_result = await db.execute(file_permissions_query)
                 file_permissions = file_permissions_result.scalars().all()
 
-                # Track processed file IDs to avoid duplication
-                processed_file_ids = set()
-
                 # First pass: collect all folder IDs and their parent IDs
                 all_folders = {}
                 parent_child_map = {}
@@ -323,10 +295,6 @@ class FolderService:
                     if permission.can_view:
                         folder = await get_folder_with_contents(db, permission.folder_id)
                         if folder:
-                            # Track files in folders to avoid duplication in final response
-                            if "files" in folder:
-                                for file in folder["files"]:
-                                    processed_response_file_ids.add(file["id"])
                             all_folders[folder["id"]] = folder
                             if folder["parent_folder_id"] is not None:
                                 if folder["parent_folder_id"] not in parent_child_map:
@@ -347,7 +315,7 @@ class FolderService:
                         file_query = select(File).where(File.id == file_permission.file_id)
                         file_result = await db.execute(file_query)
                         file = file_result.scalar_one_or_none()
-                        if file and file.id not in processed_file_ids:
+                        if file:
                             file_uploaded_by_id = file.uploaded_by_id
                             permission_user_id = file_permission.user_id
                             file_path = str(file.file_path).startswith(
@@ -360,11 +328,7 @@ class FolderService:
                                         file_url = await storage_manager.generate_presigned_url(file.file_path)
                                         file_response = FileResponse.from_orm(file)
                                         file_response.file_url = file_url
-                                        # Only add to user_files if not already in the response
-                                        if file.id not in processed_response_file_ids:
-                                            user_files.append(file_response)
-                                            processed_response_file_ids.add(file.id)
-                                        processed_file_ids.add(file.id)
+                                        user_files.append(file_response)
                             elif user.username != 'admin':
                                 if file_path or file.uploaded_by_id != user.id:
                                     folder_permission_query = select(UserFolderPermission).where(
@@ -382,19 +346,16 @@ class FolderService:
                                             file_url = await storage_manager.generate_presigned_url(file.file_path)
                                             file_response = FileResponse.from_orm(file)
                                             file_response.file_url = file_url
-                                            # Only add to user_files if not already in the response
-                                            if file.id not in processed_response_file_ids:
-                                                user_files.append(file_response)
-                                                processed_response_file_ids.add(file.id)
-                                            processed_file_ids.add(file.id)
+                                            user_files.append(file_response)
 
                 if user_folders or user_files:
-                    user_resources[user.username] = {
+                    user_resources[user.username]  = {
                         "folders": [FolderResponse.from_orm(folder) for folder in user_folders],
                         "files": [FileResponse.from_orm(file) for file in user_files]
                     }
 
             return user_resources
+
 
     @staticmethod
     async def download_folder_as_zip(

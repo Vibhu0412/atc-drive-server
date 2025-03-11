@@ -523,7 +523,7 @@
                     closeModal();
                 },
                 error: function(xhr, status, error) {
-                    showToaster('Failed to share item: ','error', 4000 + (xhr.responseJSON?.message || error));
+                    showToaster('Failed to share item insufficient permission ','error', 4000 + (xhr.responseJSON?.message || error));
                 }
             });
         }

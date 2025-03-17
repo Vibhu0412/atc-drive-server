@@ -17,7 +17,7 @@
                     <button class="upload-btn">Upload</button>
                     <div class="upload-btn-content">
                         <a href="#" onclick="openFileUploadModal()">File Upload</a>
-                        <a href="#" onclick="openFolderUploadModal()">Folder Upload</a>
+                        <a href="#" onclick="openFolderUploadModal()">Folder Create</a>
                     </div>
                 </div>
                 <button class="add-user-btn" id="addUserBtn" style="display: none;">Add User</button>
@@ -66,7 +66,7 @@
         </div>
     </div>
 
-    <!-- Modal for folder upload -->
+    <!-- Modal for Folder Create -->
     <div id="folderUploadModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeFolderUploadModal()">&times;</span>
@@ -157,29 +157,44 @@
                 populateUserDropdown(allUsers);
             });
 
-            // This prevents clicks on the menu items from opening the folder
-            $(document).on('click', '.context-menu-content', function(e) {
-                e.stopPropagation();
-            });
+
             // Prevent click events on the context menu from propagating to parent elements
             $(document).on('click', '.context-menu-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
 
-                const menuId = $(this).next('.context-menu-content').attr('id');
-                $('.context-menu-content').not('#' + menuId).removeClass('show');
-                $('#' + menuId).toggleClass('show');
+                const menuContent = $(this).next('.context-menu-content');
 
-                return false; // This is important - ensures the event doesn't propagate
+                // Close all other menus first
+                $('.context-menu-content').not(menuContent).removeClass('show');
+
+                // Toggle this menu
+                menuContent.toggleClass('show');
+
+                return false;
             });
 
+            // This prevents clicks on the menu items from opening the folder
+            $(document).on('click', '.context-menu-content', function(e) {
+                e.stopPropagation();
+            });
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('.context-menu').length) {
+                    $('.context-menu-content').removeClass('show');
+                }
+            });
+
+            // Additional important fix: prevent hover events from causing issues
+            $(document).on('mouseenter mouseleave', '.context-menu-content', function(e) {
+                e.stopPropagation();
+            });
             // Handle file upload form submission
             $('#fileUploadForm').on('submit', function(e) {
                 e.preventDefault();
                 uploadFile();
             });
 
-            // Handle folder upload form submission
+            // Handle Folder Create form submission
             $('#folderUploadForm').on('submit', function(e) {
                 e.preventDefault();
                 uploadFolder();
@@ -255,6 +270,9 @@
         function fetchFoldersAndFiles() {
             const token = localStorage.getItem('accessToken');
 
+            // Show loading indicator
+            $('#contentArea').html('<div class="loading">Loading your files and folders...</div>');
+
             $.ajax({
                 url: 'http://65.2.96.95/v1/folder/files',
                 type: 'GET',
@@ -262,21 +280,45 @@
                     'Authorization': 'Bearer ' + token
                 },
                 success: function(response) {
-                    usersData = response.detail;
-                    displayUsers();
+                    if (response && response.detail) {
+                        usersData = response.detail;
+                        displayUsers();
+                    } else {
+                        // Handle empty or malformed response
+                        usersData = {};
+                        displayUsers(); // This will show our new empty state
+                    }
                 },
                 error: function(xhr, status, error) {
                     let errorMessage = 'Failed to load data. Please try again.';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        errorMessage = xhr.responseJSON.message;
-                    } else if (xhr.status === 401) {
+
+                    if (xhr.status === 401) {
                         // Token expired or invalid
                         localStorage.removeItem('accessToken');
                         window.location.href = '../login-module/login.html';
                         return;
+                    } else if (xhr.status === 404) {
+                        // No data found
+                        usersData = {};
+                        displayUsers(); // Show empty state
+                        return;
+                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
                     }
+
                     showToaster(errorMessage, 'error');
-                    $('#contentArea').html('<div class="empty-message">' + errorMessage + '</div>');
+                    $('#contentArea').html(`
+                        <div class="empty-state">
+                            <div class="empty-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <h3>Oops! Something went wrong</h3>
+                            <p>${errorMessage}</p>
+                            <button class="upload-empty-btn" onclick="fetchFoldersAndFiles()">
+                                <i class="fas fa-sync"></i> Retry
+                            </button>
+                        </div>
+                    `);
                 }
             });
         }
@@ -472,6 +514,33 @@
         function displayUsers() {
             // Hide Upload button when at the users dashboard level
             $('.upload-btn').hide();
+
+            // Check if usersData is empty or undefined
+            if (!usersData || Object.keys(usersData).length === 0) {
+                let content = `
+                    <div class="empty-state">
+                        <div class="empty-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <h3>No files or folders found</h3>
+                        <p>There are no files or folder found in the system.</p>`;
+
+                if (userRole === 'admin') {
+                    content += `
+                        <div class="empty-actions">
+                            <button class="upload-empty-btn" onclick="openFileUploadModal()">
+                                <i class="fas fa-upload"></i> Upload File
+                            </button>
+                            <button class="create-folder-btn" onclick="openFolderUploadModal()">
+                                <i class="fas fa-folder-plus"></i> Create Folder
+                            </button>
+                        </div>`;
+                }
+
+                content += `</div>`;
+                $('#contentArea').html(content);
+                return;
+            }
 
             let content = '<h2 class="section-title">Users</h2>';
             content += '<div class="folder-container">';

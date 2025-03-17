@@ -18,7 +18,7 @@
                     <button class="upload-btn">Upload</button>
                     <div class="upload-btn-content">
                         <a href="#" onclick="openFileUploadModal()">File Upload</a>
-                        <a href="#" onclick="openFolderUploadModal()">Folder Upload</a>
+                        <a href="#" onclick="openFolderUploadModal()">Folder Create</a>
                     </div>
                 </div>
                 <button class="add-user-btn" id="addUserBtn" style="display: none;">Add User</button>
@@ -615,11 +615,28 @@
                 content += '</div>';
             }
 
-            if ((folders.length === 0 && (!files || files.length === 0))) {
-                content = '<div class="empty-message">This folder is empty.</div>';
-            }
+        if (folders.length === 0 && (!files || files.length === 0)) {
+            content += `
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <h3>No files or folders found</h3>
+                    <p>There are no files or folder found in the system.</p>
+                    <div class="empty-actions">
+                        <button class="upload-empty-btn" onclick="openFileUploadModal()">
+                            <i class="fas fa-upload"></i> Upload File
+                        </button>
+                        <button class="create-folder-btn" onclick="openFolderUploadModal()">
+                            <i class="fas fa-folder-plus"></i> Create Folder
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
 
-            $('#contentArea').html(content);
+        // Update the content area with the generated content
+        $('#contentArea').html(content);
         }
 
         function openFolder(folderId, folderName) {

@@ -158,6 +158,7 @@ body {
     right: 10px;
     top: 10px;
     display: inline-block;
+    z-index: 50;
 }
 
 .context-menu-btn {
@@ -166,17 +167,23 @@ body {
     cursor: pointer;
     font-size: 16px;
     padding: 5px;
+    z-index: 51; /* Higher than regular content */
 }
 
 .context-menu-content {
     display: none;
     position: absolute;
     right: 0;
+    top: 100%; /* Position below the button */
     background-color: #f9f9f9;
     min-width: 120px;
     box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-    z-index: 1;
+    z-index: 100; /* Ensure it's above other elements */
     border-radius: 4px;
+}
+
+.context-menu-content.show {
+    display: block;
 }
 
 .context-menu-content a {
@@ -184,12 +191,12 @@ body {
     padding: 12px 16px;
     text-decoration: none;
     display: block;
+    white-space: nowrap;
 }
 
 .context-menu-content a:hover {
     background-color: #f1f1f1;
 }
-
 /* Upload button styles */
 .upload-btn {
     position: relative;
@@ -506,4 +513,74 @@ body {
 .toaster.show {
     opacity: 1;
     animation: toasterBounce 0.5s forwards;
+}
+
+/* Empty state styling */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    text-align: center;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    margin: 2rem 0;
+}
+
+.empty-icon {
+    font-size: 4rem;
+    color: #ccc;
+    margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+    margin: 0.5rem 0;
+    font-size: 1.5rem;
+    color: #333;
+}
+
+.empty-state p {
+    margin: 0.5rem 0 1.5rem;
+    color: #666;
+}
+
+.empty-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.upload-empty-btn, .create-folder-btn, .add-user-empty-btn {
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    background-color: #4a86e8;
+    color: white;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s;
+}
+
+.create-folder-btn {
+    background-color: #34a853;
+}
+
+.add-user-empty-btn {
+    background-color: #ea4335;
+}
+
+.upload-empty-btn:hover {
+    background-color: #3a76d8;
+}
+
+.create-folder-btn:hover {
+    background-color: #2d9548;
+}
+
+.add-user-empty-btn:hover {
+    background-color: #d93c2f;
 }

@@ -489,12 +489,17 @@
             $('#contentArea').html(content);
         }
 
-        // In the openUser() function, we should show the Upload button
         function openUser(user) {
             folderHierarchy = [{ id: null, name: user }];
             currentFolderId = null;
-            // Show Upload button when inside a user folder
-            $('.upload-btn').show();
+
+            // Show Upload button only when inside the admin user folder
+            if (user === 'admin') {
+                $('.upload-btn').show();
+            } else {
+                $('.upload-btn').hide();
+            }
+
             displayCurrentLevel(user);
         }
 
@@ -736,6 +741,11 @@
             currentFolderId = targetFolder.id;
             folderHierarchy = folderHierarchy.slice(0, index + 1);
             displayCurrentLevel(folderHierarchy[0].name);
+                if (folderHierarchy[0].name === 'admin') {
+                        $('.upload-btn').show();
+                    } else {
+                        $('.upload-btn').hide();
+                    }
             return false;
         }
 

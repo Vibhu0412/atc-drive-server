@@ -621,7 +621,7 @@ class FileService:
 
             # Create file permissions for the admin
             admin_user = await get_admin_user(db)
-            if admin_user:
+            if admin_user and user_id != admin_user.id:
                 admin_permission = UserFilePermission(
                     user_id=admin_user.id,
                     file_id=new_file.id,
@@ -728,7 +728,7 @@ class FileService:
                 )
             )
             permission_result = await db.execute(permission_query)
-            permission = permission_result.scalar_one_or_none()
+            permission = permission_result.first()
 
             if not permission and file.uploaded_by_id != current_user.id:
                 raise HTTPException(

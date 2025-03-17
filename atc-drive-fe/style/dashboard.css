@@ -152,13 +152,11 @@ body {
     font-style: italic;
 }
 
-/* Context menu styles */
 .context-menu {
     position: absolute;
     right: 10px;
     top: 10px;
     display: inline-block;
-    z-index: 50;
 }
 
 .context-menu-btn {
@@ -167,20 +165,19 @@ body {
     cursor: pointer;
     font-size: 16px;
     padding: 5px;
-    z-index: 51; /* Higher than regular content */
 }
 
 .context-menu-content {
     display: none;
     position: absolute;
     right: 0;
-    top: 100%; /* Position below the button */
     background-color: #f9f9f9;
     min-width: 120px;
     box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-    z-index: 100; /* Ensure it's above other elements */
+    z-index: 1;
     border-radius: 4px;
 }
+
 
 .context-menu-content.show {
     display: block;

@@ -1,11 +1,13 @@
+from datetime import timedelta
 from typing import List
 
 from fastapi import Depends, HTTPException, status, APIRouter, Security
-
+from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.utills.toekn_utills import Token
 
 from src.v1_modules.auth.crud import  get_current_user_v2
-from src.v1_modules.auth.schema import UserDetailResponse, LoginRequest, RegisterUserRequest
+from src.v1_modules.auth.schema import UserDetailResponse, LoginRequest, RegisterUserRequest, RefreshTokenRequest
 from src.v1_modules.auth.services import get_user_details_from_db, login_user, get_all_roles, \
     register_user, get_all_users
 from src.db.dbConnections import get_async_db
@@ -58,3 +60,48 @@ async def list_all_users(
     Only authenticated users can access this route.
     """
     return await get_all_users(db)
+
+@auth_router.post("/refresh-token")
+async def refresh_token(
+    refresh_token_data: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_async_db)
+):
+    token_handler = Token()
+    try:
+        # Decode the refresh token to get the user information
+        payload = token_handler.decode_token(refresh_token_data.refresh_token)
+        username = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token"
+            )
+
+        # Fetch the user from the database
+        user = await get_current_user_v2(db, username)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
+
+        # Generate a new access token
+        new_access_token = token_handler.create_access_token(
+            data={"sub": user.username},
+            expires_delta=timedelta(minutes=30)
+        )
+
+        # Optionally, generate a new refresh token
+        new_refresh_token = token_handler.create_link_token()
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer"
+        }
+
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token"
+        )

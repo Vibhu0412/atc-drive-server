@@ -33,13 +33,12 @@ async def login_user(db, login_data: LoginRequest):
                 status_code=401,
                 message="Invalid credentials"
             ).send_error_response()
-
         role = await get_role_by_user_id(db, user.role_id)
 
         token_handler = Token()
         access_token = token_handler.create_access_token(
             data={"sub": user.username},
-            expires_delta=timedelta(minutes=30)
+            expires_delta=timedelta(minutes=1)
         )
         refresh_token = token_handler.create_link_token()
 

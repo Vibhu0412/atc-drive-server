@@ -78,13 +78,21 @@ async def get_user_role_from_token(db, current_user: User):
             detail=f"Role verification failed: {str(e)}"
         )
 
+
 async def get_current_user_v2(db: AsyncSession = Depends(get_async_db),
-                     token: str = Depends(oauth2_scheme)):
+                              token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    expired_token_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token has expired",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
     try:
         payload = Token().decode_token(token)
         payload["token"] = token
@@ -92,7 +100,10 @@ async def get_current_user_v2(db: AsyncSession = Depends(get_async_db),
 
         if user_name is None:
             raise credentials_exception
-    except JWTError:
+    except JWTError as e:
+        # Check if the error is specifically about expiration
+        if "expired" in str(e).lower():
+            raise expired_token_exception
         raise credentials_exception
 
     result = await db.execute(select(User).filter(User.username == user_name))

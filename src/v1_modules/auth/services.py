@@ -4,10 +4,11 @@ from uuid import UUID
 import pytz
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.future import select
-from fastapi import status
+from fastapi import status, HTTPException
 from sqlalchemy.orm import selectinload
 
-from src.v1_modules.auth.crud import get_role_by_user_id, get_user, get_user_role_from_token, get_current_user
+from src.v1_modules.auth.crud import get_role_by_user_id, get_user, get_user_role_from_token, get_current_user, \
+    get_current_user_v2
 from src.v1_modules.auth.model import User, Role
 from src.v1_modules.auth.schema import LoginRequest, UserResponse, RoleResponse, LoginResponse, RegisterUserRequest, \
  UserResponseForGet
@@ -38,9 +39,11 @@ async def login_user(db, login_data: LoginRequest):
         token_handler = Token()
         access_token = token_handler.create_access_token(
             data={"sub": user.username},
-            expires_delta=timedelta(minutes=1)
+            expires_delta=timedelta(minutes=60)
         )
-        refresh_token = token_handler.create_link_token()
+        refresh_token = token_handler.create_refresh_token(
+            data={"sub": user.username}
+        )
 
         user.last_login = datetime.now(pytz.utc)
         db.add(user)
@@ -60,6 +63,49 @@ async def login_user(db, login_data: LoginRequest):
             message="Login successful",
             status_code=200
         ).send_success_response()
+
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Login failed: {str(e)}")
+        return Response(
+            status_code=500,
+            message=f"Login failed: {str(e)}"
+        ).send_error_response()
+
+async def create_refresh_token(db, refresh_token_data):
+    try:
+        token_handler = Token()
+
+        # Fetch the user from the database
+        user = await get_current_user_v2(db,token = refresh_token_data.refresh_token)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
+
+        # Generate a new access token
+        new_access_token = token_handler.create_access_token(
+            data={"sub": user.username},
+            expires_delta=timedelta(minutes=60)
+        )
+
+        # Optionally, generate a new refresh token
+        new_refresh_token = token_handler.create_refresh_token(
+            data={"sub": user.username}
+        )
+
+        response= {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer"
+        }
+        return Response(
+            data=response,
+            message="User details fetched successfully",
+            status_code=200
+        ).send_success_response()
+
 
     except Exception as e:
         await db.rollback()

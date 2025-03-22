@@ -18,7 +18,7 @@ class Token:
     def __init__(self):
         self.secret_key = settings.JWTSECRETKEY
         self.algorithm = settings.JWTALGORITHM
-        self.access_token_expiry = timedelta(minutes=30)
+        self.access_token_expiry = timedelta(minutes=60)
         self.refresh_token_expiry = timedelta(days=7)
 
     def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None):
@@ -46,6 +46,3 @@ class Token:
         except InvalidTokenError as e:
             # Handle other JWT errors
             raise JWTError(f"Invalid token: {str(e)}")
-    @staticmethod
-    def create_link_token():
-        return secrets.token_urlsafe(32)

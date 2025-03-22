@@ -507,3 +507,72 @@ body {
     opacity: 1;
     animation: toasterBounce 0.5s forwards;
 }
+/* Empty state styling */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    text-align: center;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    margin: 2rem 0;
+}
+
+.empty-icon {
+    font-size: 4rem;
+    color: #ccc;
+    margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+    margin: 0.5rem 0;
+    font-size: 1.5rem;
+    color: #333;
+}
+
+.empty-state p {
+    margin: 0.5rem 0 1.5rem;
+    color: #666;
+}
+
+.empty-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.upload-empty-btn, .create-folder-btn, .add-user-empty-btn {
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    background-color: #4a86e8;
+    color: white;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s;
+}
+
+.create-folder-btn {
+    background-color: #34a853;
+}
+
+.add-user-empty-btn {
+    background-color: #ea4335;
+}
+
+.upload-empty-btn:hover {
+    background-color: #3a76d8;
+}
+
+.create-folder-btn:hover {
+    background-color: #2d9548;
+}
+
+.add-user-empty-btn:hover {
+    background-color: #d93c2f;
+}

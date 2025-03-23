@@ -2,6 +2,7 @@
 import uuid
 
 from dotenv import load_dotenv
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.routes.routes import router
 
@@ -17,17 +18,19 @@ app = FastAPI(title="ATC-Drive project")
 
 app.add_middleware(
     CORSMiddleware,
+    BaseHTTPMiddleware,
+    dispatch=lambda request, call_next: call_next(request),
     allow_origins=[
-        "http://65.2.96.95",
-        "http://ec2-65-2-96-95.ap-south-1.compute.amazonaws.com",
-        "http://localhost:9000",
-        "http://127.0.0.1:9000",
-        "http://65.2.96.95:9000",
-        "http://65.2.96.95:8000",
-        "http://localhost:63342"  # Add this line
-    ],
-    allow_methods=["*"],
-    allow_headers=["*"]
+            "http://65.2.96.95",
+            "http://ec2-65-2-96-95.ap-south-1.compute.amazonaws.com",
+            "http://localhost:9000",
+            "http://127.0.0.1:9000",
+            "http://65.2.96.95:9000",
+            "http://65.2.96.95:8000",
+            "http://localhost:63342"  # Add this line
+        ],
+        allow_methods=["*"],
+        allow_headers=["*"]
 )
 @app.get("/")
 def root():

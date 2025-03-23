@@ -43,6 +43,8 @@
 
                         // Store the access token in localStorage
                         localStorage.setItem('accessToken', accessToken);
+                        localStorage.setItem('refreshToken', response.detail.refresh_token);
+
                         if (role === 'admin') {
                         window.location.href = '../admin-modules/dashboard.html';
                     } else {

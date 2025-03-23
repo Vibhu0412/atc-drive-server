@@ -104,7 +104,8 @@ body {
 }
 
 .folder-item:hover, .file-item:hover {
-    transform: translateY(-5px);
+    /*transform: translateY(-1px);*/
+    z-index: 2;
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
@@ -175,7 +176,7 @@ body {
     background-color: #f9f9f9;
     min-width: 120px;
     box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-    z-index: 1;
+    z-index: 100;
     border-radius: 4px;
 }
 

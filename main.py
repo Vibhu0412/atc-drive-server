@@ -18,8 +18,8 @@ app = FastAPI(title="ATC-Drive project")
 
 app.add_middleware(
     CORSMiddleware,
-    BaseHTTPMiddleware,
-    dispatch=lambda request, call_next: call_next(request),
+    # BaseHTTPMiddleware,
+    # dispatch=lambda request, call_next: call_next(request),
     allow_origins=[
             "http://65.2.96.95",
             "http://ec2-65-2-96-95.ap-south-1.compute.amazonaws.com",

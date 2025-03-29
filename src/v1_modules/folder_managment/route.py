@@ -248,9 +248,9 @@ async def download_file(
             data=None
         ).send_error_response()
 
-@folder_router.get("/files/download")
+@folder_router.post("/files/download")
 async def download_files(
-    file_ids: List[str] = Query(...),
+    file_ids: List[UUID],  # Accept as JSON body
     current_user: User = Depends(get_current_user_v2),
     db: AsyncSession = Depends(get_async_db)
 ):

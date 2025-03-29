@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
-from fastapi import HTTPException, APIRouter, Depends, UploadFile, File
+from fastapi import HTTPException, APIRouter, Depends, UploadFile, File, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
@@ -248,6 +248,33 @@ async def download_file(
             data=None
         ).send_error_response()
 
+@folder_router.get("/files/download")
+async def download_files(
+    file_ids: List[str] = Query(...),
+    current_user: User = Depends(get_current_user_v2),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Get pre-signed URLs for multiple files."""
+    try:
+        file_urls = await FileService.download_files(db, file_ids, current_user)
+        return ResponseBuilder.from_common_response(
+            CommonResponses.success(
+                data={"file_urls": file_urls},
+                message="Pre-signed URLs generated successfully"
+            )
+        ).send_success_response()
+    except HTTPException as e:
+        return ResponseBuilder(
+            status_code=e.status_code,
+            message=e.detail,
+            data=None
+        ).send_error_response()
+    except Exception as e:
+        return ResponseBuilder(
+            status_code=ResponseStatus.INTERNAL_ERROR,
+            message=str(e),
+            data=None
+        ).send_error_response()
 
 @folder_router.get("/folders/{folder_id}/download-zip")
 async def download_folder_as_zip(

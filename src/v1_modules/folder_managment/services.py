@@ -701,6 +701,52 @@ class FileService:
         return file_url
 
     @staticmethod
+    async def download_files(
+            db,
+            file_ids,
+            current_user
+    ) -> dict:
+        """Generate pre-signed URLs for multiple files."""
+        file_urls = {}
+        storage_manager: S3StorageManager = get_storage_manager()
+
+        for file_id in file_ids:
+            # Check if the file exists
+            file_query = select(File).where(File.id == file_id)
+            file_result = await db.execute(file_query)
+            file = file_result.scalar_one_or_none()
+
+            if not file:
+                file_urls[str(file_id)] = {"error": "File not found"}
+                continue
+            # Check if the user has permission to view the file
+            permission_query = select(UserFilePermission).where(
+                and_(
+                    UserFilePermission.file_id == file_id,
+                    UserFilePermission.user_id == current_user.id,
+                    UserFilePermission.can_view == True
+                )
+            )
+            permission_result = await db.execute(permission_query)
+            permission = permission_result.scalar_one_or_none()
+
+            if not permission and file.uploaded_by_id != current_user.id:
+                file_urls[str(file_id)] = {"error": "Unauthorized to access this file"}
+                continue
+
+            try:
+                # Generate pre-signed URL
+                file_url = await storage_manager.generate_presigned_url(file.file_path)
+                file_urls[str(file_id)] = {
+                    "file_url": file_url,
+                    "file_name": file.filename
+                }
+            except Exception as e:
+                file_urls[str(file_id)] = {"error": f"Failed to generate URL: {str(e)}"}
+
+        return file_urls
+
+    @staticmethod
     async def delete_file(
             db,
             file_id,

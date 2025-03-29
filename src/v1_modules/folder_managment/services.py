@@ -706,43 +706,49 @@ class FileService:
             file_ids,
             current_user
     ) -> dict:
-        """Generate pre-signed URLs for multiple files."""
-        file_urls = {}
-        storage_manager: S3StorageManager = get_storage_manager()
+        """Batch generate pre-signed URLs for multiple files."""
+        storage_manager = get_storage_manager()
 
+        # 1. Fetch all files in a single query
+        files_query = select(File).where(File.id.in_(file_ids))
+        files_result = await db.execute(files_query)
+        files = {str(file.id): file for file in files_result.scalars()}
+
+        # 2. Batch check permissions (owner or explicit permission)
+        permission_query = select(UserFilePermission).where(
+            and_(
+                UserFilePermission.file_id.in_(file_ids),
+                UserFilePermission.user_id == current_user.id,
+                UserFilePermission.can_view == True
+            )
+        )
+        permissions_result = await db.execute(permission_query)
+        permitted_file_ids = {str(perm.file_id) for perm in permissions_result.scalars()}
+
+        # 3. Generate URLs in parallel (if using async S3 client)
+        file_urls = {}
         for file_id in file_ids:
-            # Check if the file exists
-            file_query = select(File).where(File.id == file_id)
-            file_result = await db.execute(file_query)
-            file = file_result.scalar_one_or_none()
+            file_id_str = str(file_id)
+            file = files.get(file_id_str)
 
             if not file:
-                file_urls[str(file_id)] = {"error": "File not found"}
+                file_urls[file_id_str] = {"error": "File not found"}
                 continue
-            # Check if the user has permission to view the file
-            permission_query = select(UserFilePermission).where(
-                and_(
-                    UserFilePermission.file_id == file_id,
-                    UserFilePermission.user_id == current_user.id,
-                    UserFilePermission.can_view == True
-                )
-            )
-            permission_result = await db.execute(permission_query)
-            permission = permission_result.scalar_one_or_none()
 
-            if not permission and file.uploaded_by_id != current_user.id:
-                file_urls[str(file_id)] = {"error": "Unauthorized to access this file"}
+            if file_id_str not in permitted_file_ids and file.uploaded_by_id != current_user.id:
+                file_urls[file_id_str] = {"error": "Unauthorized access"}
                 continue
 
             try:
-                # Generate pre-signed URL
+                storage_manager: S3StorageManager = get_storage_manager()
                 file_url = await storage_manager.generate_presigned_url(file.file_path)
-                file_urls[str(file_id)] = {
+                file_urls[file_id_str] = {
                     "file_url": file_url,
-                    "file_name": file.filename
+                    "file_name": file.filename,
+                    "file_size": file.file_size
                 }
             except Exception as e:
-                file_urls[str(file_id)] = {"error": f"Failed to generate URL: {str(e)}"}
+                file_urls[file_id_str] = {"error": f"URL generation failed: {str(e)}"}
 
         return file_urls
 

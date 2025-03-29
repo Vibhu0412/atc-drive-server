@@ -1,6 +1,6 @@
 from typing import Optional, List
 from uuid import UUID
-from fastapi import HTTPException, APIRouter, Depends, UploadFile, File, Query
+from fastapi import HTTPException, APIRouter, Depends, UploadFile, File, Query, Body
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
@@ -248,21 +248,38 @@ async def download_file(
             data=None
         ).send_error_response()
 
+
 @folder_router.post("/files/download")
 async def download_files(
-    file_ids: List[UUID],  # Accept as JSON body
-    current_user: User = Depends(get_current_user_v2),
-    db: AsyncSession = Depends(get_async_db)
+        request_data: dict = Body(..., example={"file_ids": ["uuid1", "uuid2"]}),
+        current_user: User = Depends(get_current_user_v2),
+        db: AsyncSession = Depends(get_async_db)
 ):
-    """Get pre-signed URLs for multiple files."""
+    """Get pre-signed URLs for multiple files (max 50)."""
     try:
+        file_ids = request_data.get("file_ids", [])
+
+        # Validate input
+        if not file_ids:
+            return ResponseBuilder.from_common_response(
+                CommonResponses.validation_error("At least one file_id is required")
+            ).send_error_response()
+
+        if len(file_ids) > 50:
+            return ResponseBuilder.from_common_response(
+                CommonResponses.validation_error("Max 50 files per request")
+            ).send_error_response()
+
+        # Process files
         file_urls = await FileService.download_files(db, file_ids, current_user)
+
         return ResponseBuilder.from_common_response(
             CommonResponses.success(
                 data={"file_urls": file_urls},
                 message="Pre-signed URLs generated successfully"
             )
         ).send_success_response()
+
     except HTTPException as e:
         return ResponseBuilder(
             status_code=e.status_code,

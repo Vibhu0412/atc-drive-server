@@ -286,3 +286,53 @@ async def get_all_users(db):
             status_code=500,
             message=f"Failed to fetch users: {str(e)}"
         ).send_error_response()
+
+
+async def change_user_password(db, change_password_data):
+    try:
+        logger.info(f"Attempting to change password for user: {change_password_data.email}")
+
+        # Get the user by email
+        user = await get_user(db, email=change_password_data.email)
+
+        # Verify old password
+        if not hash.verify_password(change_password_data.old_password, user.password_hash):
+            logger.warning("Old password is incorrect")
+            return Response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Old password is incorrect"
+            ).send_error_response()
+
+        # Check if new password and confirm password match
+        if change_password_data.new_password != change_password_data.confirm_password:
+            logger.warning("New password and confirm password do not match")
+            return Response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="New password and confirm password do not match"
+            ).send_error_response()
+
+        # Hash the new password
+        new_hashed_password = hash.hash_password(change_password_data.new_password)
+
+        # Update the password
+        user.password_hash = str(new_hashed_password)
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+        logger.info("Password changed successfully")
+        return Response(
+            message="Password changed successfully",
+            status_code=status.HTTP_200_OK
+        ).send_success_response()
+
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error changing password: {str(e)}")
+        return Response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            message=f"Error changing password: {str(e)}"
+        ).send_error_response()

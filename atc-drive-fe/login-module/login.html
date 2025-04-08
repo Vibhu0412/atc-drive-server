@@ -6,7 +6,7 @@
     <title>Login</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-     <link rel="stylesheet" href="../style/login.css">
+    <link rel="stylesheet" href="../style/login.css">
 </head>
 <body>
     <div class="container">
@@ -18,13 +18,17 @@
             <input type="password" id="password" name="password" required>
             <button type="submit">Login</button>
         </form>
-        <div id="message"></div>
+        <div id="message" class="message-container"></div>
+        <div class="forgot-password">
+            <a href="../change-password-module/change_password.html">Forgot Password?</a>
+        </div>
     </div>
 
     <script>
         $(document).ready(function() {
             $('#loginForm').on('submit', function(event) {
                 event.preventDefault();
+                $('#message').html('').removeClass('error success'); // Clear previous messages
 
                 const email = $('#email').val();
                 const password = $('#password').val();
@@ -46,22 +50,36 @@
                         localStorage.setItem('refreshToken', response.detail.refresh_token);
 
                         if (role === 'admin') {
-                        window.location.href = '../admin-modules/dashboard.html';
-                    } else {
-                        window.location.href = '../regular-user-module/dashboard.html';
-                    }
-
+                            window.location.href = '../admin-modules/dashboard.html';
+                        } else {
+                            window.location.href = '../regular-user-module/dashboard.html';
+                        }
                     },
                     error: function(xhr, status, error) {
                         let errorMessage = 'Login failed. Please try again.';
-                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                            errorMessage = xhr.responseJSON.message;
+
+                        if (xhr.responseJSON) {
+                            const response = xhr.responseJSON;
+
+                            if (response.meta && response.meta.message) {
+                                errorMessage = response.meta.message;
+
+                                if (errorMessage.includes("User not found")) {
+                                    errorMessage = "User not found. Please check your email address.";
+                                } else if (errorMessage.includes("Invalid credentials")) {
+                                    errorMessage = "Invalid email or password. Please try again.";
+                                }
+                            } else if (response.message) {
+                                errorMessage = response.message;
+                            }
                         } else if (xhr.status === 0) {
-                            errorMessage = 'Unable to connect to the server. Check your network or CORS settings.';
+                            errorMessage = 'Unable to connect to the server. Check your network connection.';
                         } else if (xhr.statusText) {
                             errorMessage = xhr.statusText;
                         }
-                        $('#message').html('<p style="color:red;">' + errorMessage + '</p>');
+
+                        const messageDiv = $('#message');
+                        messageDiv.html('<p>' + errorMessage + '</p>').addClass('error');
                     }
                 });
             });

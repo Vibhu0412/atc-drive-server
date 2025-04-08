@@ -4,9 +4,10 @@ from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.v1_modules.auth.crud import  get_current_user_v2
-from src.v1_modules.auth.schema import UserDetailResponse, LoginRequest, RegisterUserRequest, RefreshTokenRequest
+from src.v1_modules.auth.schema import UserDetailResponse, LoginRequest, RegisterUserRequest, RefreshTokenRequest, \
+    ChangePasswordRequest
 from src.v1_modules.auth.services import get_user_details_from_db, login_user, get_all_roles, \
-    register_user, get_all_users, create_refresh_token
+    register_user, get_all_users, create_refresh_token, change_user_password
 from src.db.dbConnections import get_async_db
 from uuid import UUID
 
@@ -71,4 +72,19 @@ async def refresh_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token"
+        )
+@auth_router.post("/change-password")
+async def change_password(
+    change_password_data: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_async_db)
+):
+    try:
+        response = await change_user_password(db, change_password_data)
+        return response
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error changing password: {str(e)}"
         )

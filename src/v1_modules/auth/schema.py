@@ -118,3 +118,9 @@ class UserResponseForGet(BaseModel):
     role: RoleResponse
     created_at: datetime
     last_login: Optional[datetime] = None
+
+class ChangePasswordRequest(BaseModel):
+    email: str
+    old_password: str
+    new_password: str
+    confirm_password: str

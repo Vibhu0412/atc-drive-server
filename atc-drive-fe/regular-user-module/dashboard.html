@@ -456,27 +456,30 @@
             });
         }
 
-        function openShareModal(itemType, itemId, itemName) {
-            currentItemType = itemType;
-            currentItemId = itemId;
-            currentItemName = itemName;
-            selectedUsers = [];
-            selectedPermissions = [];
+    function openShareModal(itemType, itemId, itemName) {
+        // Close any open context menus first
+        $('.context-menu-content').removeClass('show');
 
-            // Reset UI elements
-            document.getElementById('shareItemName').textContent = itemName;
-            document.getElementById('userSearch').value = '';
-            document.getElementById('selectedUsersContainer').innerHTML = '';
-            document.getElementById('userDropdown').innerHTML = '';
-            document.getElementById('userDropdown').classList.remove('active');
-            updatePermissionButtons();
+        currentItemType = itemType;
+        currentItemId = itemId;
+        currentItemName = itemName;
+        selectedUsers = [];
+        selectedPermissions = [];
 
-            // Display the modal
-            document.getElementById('shareModal').style.display = 'block';
+        // Reset UI elements
+        document.getElementById('shareItemName').textContent = itemName;
+        document.getElementById('userSearch').value = '';
+        document.getElementById('selectedUsersContainer').innerHTML = '';
+        document.getElementById('userDropdown').innerHTML = '';
+        document.getElementById('userDropdown').classList.remove('active');
+        updatePermissionButtons();
 
-            // Stop event propagation
-            event.stopPropagation();
-        }
+        // Display the modal
+        document.getElementById('shareModal').style.display = 'block';
+
+        // Stop event propagation
+        event.stopPropagation();
+    }
 
         function closeModal() {
             document.getElementById('shareModal').style.display = 'none';

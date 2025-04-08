@@ -689,7 +689,7 @@
                     fetchFoldersAndFiles(); // Refresh the folder and file list
                 },
                 error: function(xhr, status, error) {
-                    showToaster('No enough permission delete file ', 'error', 4000 + (xhr.responseJSON?.message || error));
+                    showToaster('Insufficient permission to perform this action', 'error', 4000 + (xhr.responseJSON?.message || error));
                 }
             });
 

@@ -76,10 +76,11 @@ async def refresh_token(
 @auth_router.post("/change-password")
 async def change_password(
     change_password_data: ChangePasswordRequest,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    user: dict = Security(get_current_user_v2)
 ):
     try:
-        response = await change_user_password(db, change_password_data)
+        response = await change_user_password(db, change_password_data,user)
         return response
     except HTTPException as e:
         raise e

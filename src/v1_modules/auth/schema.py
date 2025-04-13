@@ -121,6 +121,5 @@ class UserResponseForGet(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     email: str
-    old_password: str
     new_password: str
     confirm_password: str

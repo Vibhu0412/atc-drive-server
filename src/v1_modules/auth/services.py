@@ -288,9 +288,17 @@ async def get_all_users(db):
         ).send_error_response()
 
 
-async def change_user_password(db, change_password_data):
+async def change_user_password(db, change_password_data,user):
     try:
         logger.info(f"Attempting to change password for user: {change_password_data.email}")
+
+        user_role = await get_user_role_from_token(db, user)
+
+        if user_role.name != "admin":
+            return Response(
+                status_code=status.HTTP_403_FORBIDDEN,
+                message="Only admins can register users."
+            ).send_error_response()
 
         # Get the user by email
         user = await get_user(db, email=change_password_data.email)

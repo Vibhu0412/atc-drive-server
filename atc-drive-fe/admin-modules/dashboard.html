@@ -11,7 +11,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>My Drive <span id="userRole" class="user-role"></span></h1>
+            <h1>ATC Drive <span id="userRole" class="user-role"></span></h1>
             <div class="header-buttons">
                 <div class="upload-btn" style="display: none;">
                     <button class="upload-btn">Upload</button>
@@ -20,6 +20,8 @@
                         <a href="#" onclick="openFolderUploadModal()">Folder Create</a>
                     </div>
                 </div>
+                <button class="change-password-btn" id="changePasswordBtn" style="display: none;">Change Password</button>
+
                 <button class="add-user-btn" id="addUserBtn" style="display: none;">Add User</button>
                 <button class="logout-btn" id="logoutBtn">Logout</button>
             </div>
@@ -33,6 +35,28 @@
             <div class="loading">Loading your files and folders...</div>
         </div>
     </div>
+
+    <div id="changePasswordModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeChangePasswordModal()">&times;</span>
+        <h2>Change User Password</h2>
+        <form id="adminChangePasswordForm">
+            <div class="form-group">
+                <label for="userEmail">User Email:</label>
+                <input type="email" id="userEmail" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="newPassword">New Password:</label>
+                <input type="password" id="newPassword" name="new_password" required>
+            </div>
+            <div class="form-group">
+                <label for="confirmPassword">Confirm New Password:</label>
+                <input type="password" id="confirmPassword" name="confirm_password" required>
+            </div>
+            <button type="submit">Change Password</button>
+        </form>
+    </div>
+</div>
 
     <!-- Modal for sharing -->
     <div id="shareModal" class="modal">
@@ -100,6 +124,7 @@
                 return;
             }
 
+
             // Extract user information from token
             try {
                 const tokenPayload = JSON.parse(atob(token.split('.')[1]));
@@ -113,6 +138,12 @@
             } catch (e) {
                 console.error('Error parsing token:', e);
             }
+                    // Show change password button for admin
+            if (userRole === 'admin') {
+                $('#addUserBtn').show();
+                $('#changePasswordBtn').show(); // Add this line
+            }
+
 
             // Fetch folders and files
             fetchFoldersAndFiles();
@@ -322,7 +353,71 @@
                 }
             });
         }
+        $('#changePasswordBtn').on('click', function() {
+            openChangePasswordModal();
+        });
 
+        // Add these functions after your existing functions
+        function openChangePasswordModal() {
+            document.getElementById('changePasswordModal').style.display = 'block';
+        }
+
+        function closeChangePasswordModal() {
+            document.getElementById('changePasswordModal').style.display = 'none';
+        }
+
+        // Handle the admin change password form submission
+        $('#adminChangePasswordForm').on('submit', function(e) {
+            e.preventDefault();
+
+            const email = $('#userEmail').val();
+            const new_password = $('#newPassword').val();
+            const confirm_password = $('#confirmPassword').val();
+
+            // Client-side validation
+            if (new_password !== confirm_password) {
+                showToaster('New passwords do not match.', 'error');
+                return;
+            }
+
+            const token = localStorage.getItem('accessToken');
+
+            $.ajax({
+                url: 'http://65.2.96.95/v1/auth/change-password',
+                type: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify({
+                    email: email,
+                    new_password: new_password,
+                    confirm_password: confirm_password
+                }),
+                success: function(response) {
+                    showToaster('Password changed successfully for ' + email, 'success');
+                    closeChangePasswordModal();
+
+                    // Reset the form
+                    $('#adminChangePasswordForm')[0].reset();
+                },
+                error: function(xhr, status, error) {
+                    let errorMessage = 'Password change failed. Please try again.';
+
+                    if (xhr.responseJSON) {
+                        const response = xhr.responseJSON;
+
+                        if (response.meta && response.meta.message) {
+                            errorMessage = response.meta.message;
+                        } else if (response.message) {
+                            errorMessage = response.message;
+                        }
+                    }
+
+                    showToaster(errorMessage, 'error');
+                }
+            });
+        });
         function fetchAllUsers() {
             const token = localStorage.getItem('accessToken');
 

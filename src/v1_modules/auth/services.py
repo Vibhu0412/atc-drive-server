@@ -303,14 +303,6 @@ async def change_user_password(db, change_password_data,user):
         # Get the user by email
         user = await get_user(db, email=change_password_data.email)
 
-        # Verify old password
-        if not hash.verify_password(change_password_data.old_password, user.password_hash):
-            logger.warning("Old password is incorrect")
-            return Response(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                message="Old password is incorrect"
-            ).send_error_response()
-
         # Check if new password and confirm password match
         if change_password_data.new_password != change_password_data.confirm_password:
             logger.warning("New password and confirm password do not match")

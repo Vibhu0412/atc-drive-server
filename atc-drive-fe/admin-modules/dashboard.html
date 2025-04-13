@@ -607,51 +607,61 @@
 }
 
         function displayUsers() {
-            // Hide Upload button when at the users dashboard level
-            $('.upload-btn').hide();
+    // Hide Upload button when at the users dashboard level
+    $('.upload-btn').hide();
 
-            // Check if usersData is empty or undefined
-            if (!usersData || Object.keys(usersData).length === 0) {
-                let content = `
-                    <div class="empty-state">
-                        <div class="empty-icon">
-                            <i class="fas fa-users"></i>
-                        </div>
-                        <h3>No files or folders found</h3>
-                        <p>There are no files or folder found in the system.</p>`;
+    // Check if usersData is empty or undefined
+    if (!usersData || Object.keys(usersData).length === 0) {
+        let content = `
+            <div class="empty-state">
+                <div class="empty-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <h3>No files or folders found</h3>
+                <p>There are no files or folder found in the system.</p>`;
 
-                if (userRole === 'admin') {
-                    content += `
-                        <div class="empty-actions">
-                            <button class="upload-empty-btn" onclick="openFileUploadModal()">
-                                <i class="fas fa-upload"></i> Upload File
-                            </button>
-                            <button class="create-folder-btn" onclick="openFolderUploadModal()">
-                                <i class="fas fa-folder-plus"></i> Create Folder
-                            </button>
-                        </div>`;
-                }
-
-                content += `</div>`;
-                $('#contentArea').html(content);
-                return;
-            }
-
-            let content = '<h2 class="section-title">Users</h2>';
-            content += '<div class="folder-container">';
-
-            for (const user in usersData) {
-                content += `
-                    <div class="folder-item" data-user="${user}" onclick="openUser('${user}')">
-                        <div class="folder-icon"><i class="fas fa-user"></i></div>
-                        <div class="folder-name">${user}</div>
-                    </div>
-                `;
-            }
-
-            content += '</div>';
-            $('#contentArea').html(content);
+        if (userRole === 'admin') {
+            content += `
+                <div class="empty-actions">
+                    <button class="upload-empty-btn" onclick="openFileUploadModal()">
+                        <i class="fas fa-upload"></i> Upload File
+                    </button>
+                    <button class="create-folder-btn" onclick="openFolderUploadModal()">
+                        <i class="fas fa-folder-plus"></i> Create Folder
+                    </button>
+                </div>`;
         }
+
+        content += `</div>`;
+        $('#contentArea').html(content);
+        return;
+    }
+
+    let content = '<h2 class="section-title">Users</h2>';
+    content += '<div class="folder-container">';
+
+    // For fetching user emails from allUsers array
+    const getUserEmail = (username) => {
+        const user = allUsers.find(user => user.username === username);
+        return user ? user.email : '';
+    };
+
+    for (const user in usersData) {
+        const email = getUserEmail(user);
+        content += `
+            <div class="folder-item" data-user="${user}" onclick="openUser('${user}')">
+                <div class="folder-icon"><i class="fas fa-user"></i></div>
+                <div class="folder-info">
+                    <div class="folder-name">${user}</div>
+                    ${email ? `<div class="folder-email">(${email})</div>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    content += '</div>';
+    $('#contentArea').html(content);
+}
 
         function openUser(user) {
             folderHierarchy = [{ id: null, name: user }];

@@ -297,7 +297,7 @@ async def change_user_password(db, change_password_data,user):
         if user_role.name != "admin":
             return Response(
                 status_code=status.HTTP_403_FORBIDDEN,
-                message="Only admins can register users."
+                message="Only admins can change the password of users."
             ).send_error_response()
 
         # Get the user by email

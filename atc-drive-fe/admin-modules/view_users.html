@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATC Drive - Users</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="../style/dashboard.css">
+    <style>
+        /* Additional styles for users page */
+        .users-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .users-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .users-title {
+            font-size: 28px;
+            color: #333;
+            margin: 0;
+        }
+
+        .back-btn {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .back-btn:hover {
+            background-color: #45a049;
+        }
+
+        .users-table-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .users-table th {
+            background-color: #f5f5f5;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            position: sticky;
+            top: 0;
+        }
+
+        .users-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .users-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .users-table tr:hover {
+            background-color: #f9f9f9;
+        }
+
+        .role-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .role-admin {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .role-user {
+            background-color: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .last-login {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .no-users {
+            padding: 40px;
+            text-align: center;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>ATC Drive <span id="userRole" class="user-role"></span></h1>
+            <div class="header-buttons">
+                <button class="logout-btn" id="logoutBtn">Logout</button>
+            </div>
+        </div>
+
+        <div class="users-container">
+            <div class="users-header">
+                <h2 class="users-title">System Users</h2>
+                <a href="dashboard.html" class="back-btn">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+
+            <div class="users-table-container">
+                <div class="table-container">
+                    <table class="users-table" id="usersTable">
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Created At</th>
+                                <th>Last Login</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <!-- Users will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            // Check if user is logged in
+            const token = localStorage.getItem('accessToken');
+            if (!token) {
+                window.location.href = '../login-module/login.html';
+                return;
+            }
+
+            // Extract user information from token
+            try {
+                const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+                const userRole = tokenPayload.sub;
+                $('#userRole').text(userRole);
+            } catch (e) {
+                console.error('Error parsing token:', e);
+            }
+
+            // Fetch and display users
+            fetchAllUsers();
+
+            // Logout button handler
+            $('#logoutBtn').on('click', function() {
+                localStorage.removeItem('accessToken');
+                window.location.href = '../login-module/login.html';
+            });
+        });
+
+        function fetchAllUsers() {
+            const token = localStorage.getItem('accessToken');
+
+            // Show loading state
+            $('#usersTableBody').html('<tr><td colspan="5" style="text-align: center;">Loading users...</td></tr>');
+
+            $.ajax({
+                url: 'http://65.2.96.95/v1/auth/all/users',
+                type: 'GET',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                },
+                success: function(response) {
+                    const users = response.detail || [];
+                    populateUsersTable(users);
+                },
+                error: function(xhr, status, error) {
+                    let errorMessage = 'Failed to load users. Please try again.';
+                    if (xhr.status === 401) {
+                        localStorage.removeItem('accessToken');
+                        window.location.href = '../login-module/login.html';
+                        return;
+                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+
+                    $('#usersTableBody').html(`<tr><td colspan="5" style="text-align: center; color: #f44336;">${errorMessage}</td></tr>`);
+                }
+            });
+        }
+
+        function populateUsersTable(users) {
+            const tableBody = document.getElementById('usersTableBody');
+            tableBody.innerHTML = '';
+
+            if (users.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No users found</td></tr>';
+                return;
+            }
+
+            users.forEach(user => {
+                const row = document.createElement('tr');
+
+                // Format created_at date
+                const createdAt = user.created_at ? new Date(user.created_at).toLocaleString() : 'N/A';
+
+                // Format last_login date
+                let lastLogin = 'Never';
+                if (user.last_login) {
+                    const loginDate = new Date(user.last_login);
+                    const now = new Date();
+                    const diffDays = Math.floor((now - loginDate) / (1000 * 60 * 60 * 24));
+
+                    if (diffDays === 0) {
+                        lastLogin = `<span class="last-login">Today at ${loginDate.toLocaleTimeString()}</span>`;
+                    } else if (diffDays === 1) {
+                        lastLogin = `<span class="last-login">Yesterday at ${loginDate.toLocaleTimeString()}</span>`;
+                    } else {
+                        lastLogin = `<span class="last-login">${loginDate.toLocaleString()}</span>`;
+                    }
+                }
+
+                // Determine role class
+                const roleClass = user.role?.name === 'admin' ? 'role-admin' : 'role-user';
+
+                row.innerHTML = `
+                    <td>${user.email || 'N/A'}</td>
+                    <td>${user.username || 'N/A'}</td>
+                    <td><span class="role-badge ${roleClass}">${user.role?.name || 'N/A'}</span></td>
+                    <td>${createdAt}</td>
+                    <td>${lastLogin}</td>
+                `;
+
+                tableBody.appendChild(row);
+            });
+        }
+    </script>
+</body>
+</html>

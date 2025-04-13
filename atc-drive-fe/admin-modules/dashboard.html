@@ -20,11 +20,15 @@
                         <a href="#" onclick="openFolderUploadModal()">Folder Create</a>
                     </div>
                 </div>
-                <button class="change-password-btn" id="changePasswordBtn" style="display: none;">Change Password</button>
-
-                <button class="add-user-btn" id="addUserBtn" style="display: none;">Add User</button>
-                <button class="logout-btn" id="logoutBtn">Logout</button>
-            </div>
+                <div class="action-dropdown">
+                    <button class="action-btn">Action <i class="fas fa-caret-down"></i></button>
+                    <div class="action-dropdown-content">
+                        <a href="#" id="addUserBtn">Add User</a>
+                        <a href="#" id="changePasswordBtn">Change Password</a>
+                        <a href="#" id="viewUsersBtn">View Users</a>
+                    </div>
+                </div>
+                <button class="logout-btn" id="logoutBtn">Logout</button>            </div>
         </div>
 
         <div class="breadcrumb" id="breadcrumbContainer">
@@ -143,6 +147,10 @@
                 $('#addUserBtn').show();
                 $('#changePasswordBtn').show(); // Add this line
             }
+            $('#viewUsersBtn').on('click', function(e) {
+                e.preventDefault();
+                window.location.href = 'view_users.html';
+            });
 
 
             // Fetch folders and files

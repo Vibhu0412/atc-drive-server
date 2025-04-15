@@ -27,7 +27,9 @@ app.add_middleware(
             "http://127.0.0.1:9000",
             "http://65.2.96.95:9000",
             "http://65.2.96.95:8000",
-            "http://localhost:63342"  # Add this line
+            "http://localhost:63342",
+            "http://93.127.137.160",
+            "http://93.127.137.160:9000"
         ],
         allow_methods=["*"],
         allow_headers=["*"]

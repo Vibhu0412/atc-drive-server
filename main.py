@@ -21,12 +21,12 @@ app.add_middleware(
     # BaseHTTPMiddleware,
     # dispatch=lambda request, call_next: call_next(request),
     allow_origins=[
-            "http://65.2.96.95",
-            "http://ec2-65-2-96-95.ap-south-1.compute.amazonaws.com",
+            "http://93.127.137.160",
+            "http://ec2-93.127.137.160.ap-south-1.compute.amazonaws.com",
             "http://localhost:9000",
             "http://127.0.0.1:9000",
-            "http://65.2.96.95:9000",
-            "http://65.2.96.95:8000",
+            "http://93.127.137.160:9000",
+            "http://93.127.137.160:8000",
             "http://localhost:63342",
             "http://93.127.137.160",
             "http://93.127.137.160:9000"

@@ -313,7 +313,7 @@
             $('#contentArea').html('<div class="loading">Loading your files and folders...</div>');
 
             $.ajax({
-                url: 'http://65.2.96.95/v1/folder/files',
+                url: 'http://93.127.137.160/v1/folder/files',
                 type: 'GET',
                 headers: {
                     'Authorization': 'Bearer ' + token
@@ -391,7 +391,7 @@
             const token = localStorage.getItem('accessToken');
 
             $.ajax({
-                url: 'http://65.2.96.95/v1/auth/change-password',
+                url: 'http://93.127.137.160/v1/auth/change-password',
                 type: 'POST',
                 headers: {
                     'Authorization': 'Bearer ' + token,
@@ -430,7 +430,7 @@
             const token = localStorage.getItem('accessToken');
 
             $.ajax({
-                url: 'http://65.2.96.95/v1/auth/all/users',
+                url: 'http://93.127.137.160/v1/auth/all/users',
                 type: 'GET',
                 headers: {
                     'Authorization': 'Bearer ' + token
@@ -592,8 +592,8 @@
 
             // Determine the correct API endpoint based on the item type
             const apiUrl = currentItemType === 'folder'
-                ? 'http://65.2.96.95/v1/folder/folder/share'
-                : 'http://65.2.96.95/v1/folder/file/share';
+                ? 'http://93.127.137.160/v1/folder/folder/share'
+                : 'http://93.127.137.160/v1/folder/file/share';
 
             $.ajax({
                 url: apiUrl,
@@ -831,7 +831,7 @@
         function downloadFile(fileId) {
             const token = localStorage.getItem('accessToken');
             $.ajax({
-                url: `http://65.2.96.95/v1/folder/files/${fileId}/download`,
+                url: `http://93.127.137.160/v1/folder/files/${fileId}/download`,
                 type: 'GET',
                 headers: {
                     'Authorization': 'Bearer ' + token
@@ -854,7 +854,7 @@
 
             // Create a temporary link element
             const link = document.createElement('a');
-            link.href = `http://65.2.96.95/v1/folder/folders/${folderId}/download-zip`;
+            link.href = `http://93.127.137.160/v1/folder/folders/${folderId}/download-zip`;
             link.target = '_blank';
 
             // Add authorization header through a fetch request
@@ -973,7 +973,7 @@
             }
 
             $.ajax({
-                url: 'http://65.2.96.95/v1/folder/file/upload',
+                url: 'http://93.127.137.160/v1/folder/file/upload',
                 type: 'POST',
                 headers: {
                     'Authorization': 'Bearer ' + token
@@ -1009,7 +1009,7 @@
             }
 
             $.ajax({
-                url: 'http://65.2.96.95/v1/folder/folders',
+                url: 'http://93.127.137.160/v1/folder/folders',
                 type: 'POST',
                 headers: {
                     'Authorization': 'Bearer ' + token,
@@ -1071,7 +1071,7 @@
             const token = localStorage.getItem('accessToken');
 
             $.ajax({
-                url: `http://65.2.96.95/v1/folder/folders/${folderId}`,
+                url: `http://93.127.137.160/v1/folder/folders/${folderId}`,
                 type: 'DELETE',
                 headers: {
                     'Authorization': 'Bearer ' + token
@@ -1096,7 +1096,7 @@
                 const token = localStorage.getItem('accessToken');
 
                 $.ajax({
-                    url: `http://65.2.96.95/v1/folder/files/${fileId}`,
+                    url: `http://93.127.137.160/v1/folder/files/${fileId}`,
                     type: 'DELETE',
                     headers: {
                         'Authorization': 'Bearer ' + token

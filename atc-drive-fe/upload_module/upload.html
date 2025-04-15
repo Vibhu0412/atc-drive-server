@@ -201,7 +201,7 @@
 
         // Upload using fetch with progress
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', 'http://65.2.96.95/v1/folder/file/upload', true);
+        xhr.open('POST', 'http://93.127.137.160/v1/folder/file/upload', true);
         xhr.setRequestHeader('Authorization', 'Bearer ' + token);
 
         xhr.upload.onprogress = function(e) {
@@ -259,7 +259,7 @@
         }
 
         $.ajax({
-            url: 'http://65.2.96.95/v1/folder/folders',
+            url: 'http://93.127.137.160/v1/folder/folders',
             type: 'POST',
             headers: {
                 'Authorization': 'Bearer ' + token,

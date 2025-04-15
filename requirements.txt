@@ -40,5 +40,4 @@ starlette==0.45.2
 typing_extensions==4.12.2
 urllib3==2.3.0
 uvicorn==0.34.0
-
 aioboto3~=13.4.0

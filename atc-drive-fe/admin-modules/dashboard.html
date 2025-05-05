@@ -42,7 +42,7 @@
 
     <div id="changePasswordModal" class="modal">
     <div class="modal-content">
-        <span class="close" onclick="closeChangePasswordModal()">&times;</span>
+        <span class="close" id="closePasswordModal">&times;</span>
         <h2>Change User Password</h2>
         <form id="adminChangePasswordForm">
             <div class="form-group">
@@ -65,7 +65,7 @@
     <!-- Modal for sharing -->
     <div id="shareModal" class="modal">
         <div class="modal-content">
-            <span class="close">&times;</span>
+            <span class="close" onclick="closeModal()">&times;</span>
             <h2>Share <span id="shareItemName"></span></h2>
             <div class="dropdown">
                 <input type="text" id="userSearch" placeholder="Search users..." oninput="filterUsers()">
@@ -370,9 +370,9 @@
             document.getElementById('changePasswordModal').style.display = 'block';
         }
 
-        function closeChangePasswordModal() {
+        document.getElementById('closePasswordModal').addEventListener('click', function() {
             document.getElementById('changePasswordModal').style.display = 'none';
-        }
+        });
 
         // Handle the admin change password form submission
         $('#adminChangePasswordForm').on('submit', function(e) {

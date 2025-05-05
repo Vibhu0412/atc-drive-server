@@ -16,7 +16,7 @@ from src.config.logger import logger
 from src.utills.response import Response
 from src.utills.toekn_utills import Token
 from src.utills.hash_utills import Hasher as hash
-from src.v1_modules.folder_managment.model import Folder
+from src.v1_modules.folder_managment.model import Folder, File
 
 
 async def login_user(db, login_data: LoginRequest):

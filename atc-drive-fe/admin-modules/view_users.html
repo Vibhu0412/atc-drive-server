@@ -291,7 +291,7 @@ tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No users 
             const token = localStorage.getItem('accessToken');
 
             $.ajax({
-                url: `http://127.0.0.1:7007/v1/auth/delete?user_id=${userId}`,
+                url: `http://93.127.137.160/v1/auth/delete?user_id=${userId}`,
                 type: 'DELETE',
                 headers: {
                     'Authorization': 'Bearer ' + token

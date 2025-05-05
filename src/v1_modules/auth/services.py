@@ -337,7 +337,7 @@ async def change_user_password(db, change_password_data,user):
             message=f"Error changing password: {str(e)}"
         ).send_error_response()
 
-async def delete_user(db, user_id, current_user):
+async def delete_user_service(db, user_id, current_user):
     try:
         # Check if current user is admin
         user_role = await get_user_role_from_token(db, current_user)

@@ -34,7 +34,12 @@ class User(Base):
     folders = relationship("Folder", back_populates="owner")
     files = relationship("File", back_populates="uploaded_by")
     folder_permissions = relationship("UserFolderPermission", back_populates="user")
-    file_permissions = relationship("UserFilePermission", back_populates="user")  # Ensure this line exists
+    file_permissions = relationship("UserFilePermission", back_populates="user")
+    shared_items_sent = relationship("SharedItem", foreign_keys="[SharedItem.shared_by]", cascade="all, delete-orphan")
+    shared_items_received = relationship("SharedItem", foreign_keys="[SharedItem.shared_with]",
+                                         cascade="all, delete-orphan")
+
+    # Ensure this line exists
     @classmethod
     def get_by_id(cls, db_session, user_id: int):
         """

@@ -16,6 +16,8 @@ from src.config.logger import logger
 from src.utills.response import Response
 from src.utills.toekn_utills import Token
 from src.utills.hash_utills import Hasher as hash
+from src.v1_modules.folder_managment.model import Folder
+
 
 async def login_user(db, login_data: LoginRequest):
     try:
@@ -351,7 +353,7 @@ async def delete_user_service(db, user_id, current_user):
         stmt = (
             select(User)
             .options(
-                selectinload(User.folders),
+                selectinload(User.folders).selectinload(Folder.subfolders),  # Load subfolders recursively
                 selectinload(User.files),
                 selectinload(User.folder_permissions),
                 selectinload(User.file_permissions),
@@ -369,7 +371,11 @@ async def delete_user_service(db, user_id, current_user):
                 message="User not found"
             ).send_error_response()
 
-        # Delete the user (cascades will handle related objects)
+        # Explicitly delete folders first to ensure proper cascading
+        for folder in user_to_delete.folders:
+            await db.delete(folder)
+
+        # Then delete the user
         await db.delete(user_to_delete)
         await db.commit()
 

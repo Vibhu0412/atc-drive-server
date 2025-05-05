@@ -341,7 +341,7 @@ async def change_user_password(db, change_password_data,user):
 
 async def delete_user_service(db, user_id, current_user):
     try:
-        # Check if current user is admin
+        # Verify admin privileges
         user_role = await get_user_role_from_token(db, current_user)
         if user_role.name != "admin":
             return Response(
@@ -349,12 +349,13 @@ async def delete_user_service(db, user_id, current_user):
                 message="Only admins can delete users."
             ).send_error_response()
 
-        # Get the user with all relationships loaded
+        # Load user with ALL relationships
         stmt = (
             select(User)
             .options(
-                selectinload(User.folders).selectinload(Folder.subfolders),
-                selectinload(User.files),
+                selectinload(User.folders).selectinload(Folder.files),  # Folders + their files
+                selectinload(User.folders).selectinload(Folder.permissions),  # Folder permissions
+                selectinload(User.files).selectinload(File.permissions),  # Files + their permissions
                 selectinload(User.folder_permissions),
                 selectinload(User.file_permissions),
                 selectinload(User.shared_items_sent),
@@ -362,8 +363,7 @@ async def delete_user_service(db, user_id, current_user):
             )
             .where(User.id == user_id)
         )
-        result = await db.execute(stmt)
-        user_to_delete = result.scalars().first()
+        user_to_delete = (await db.execute(stmt)).scalars().first()
 
         if not user_to_delete:
             return Response(
@@ -371,15 +371,36 @@ async def delete_user_service(db, user_id, current_user):
                 message="User not found"
             ).send_error_response()
 
-        # Delete all files first
+        # 1. Delete file permissions (both user's permissions and permissions on user's files)
+        for file in user_to_delete.files:
+            for permission in file.permissions:
+                await db.delete(permission)
+        for permission in user_to_delete.file_permissions:
+            await db.delete(permission)
+
+        # 2. Delete folder permissions (both user's permissions and permissions on user's folders)
+        for folder in user_to_delete.folders:
+            for permission in folder.permissions:
+                await db.delete(permission)
+        for permission in user_to_delete.folder_permissions:
+            await db.delete(permission)
+
+        # 3. Delete shared items
+        for shared_item in user_to_delete.shared_items_sent + user_to_delete.shared_items_received:
+            await db.delete(shared_item)
+
+        # 4. Delete files (including those in folders)
+        for folder in user_to_delete.folders:
+            for file in folder.files:
+                await db.delete(file)
         for file in user_to_delete.files:
             await db.delete(file)
 
-        # Delete all folders (including subfolders due to cascade)
+        # 5. Delete folders (cascade will handle subfolders)
         for folder in user_to_delete.folders:
             await db.delete(folder)
 
-        # Delete the user
+        # 6. Finally delete the user
         await db.delete(user_to_delete)
         await db.commit()
 

@@ -337,10 +337,8 @@ async def change_user_password(db, change_password_data,user):
             message=f"Error changing password: {str(e)}"
         ).send_error_response()
 
-async def delete_user_service(db, user_id, current_user):
+async def delete_user(db, user_id, current_user):
     try:
-        logger.info(f"Attempting to delete user with ID: {user_id}")
-
         # Check if current user is admin
         user_role = await get_user_role_from_token(db, current_user)
         if user_role.name != "admin":
@@ -349,25 +347,34 @@ async def delete_user_service(db, user_id, current_user):
                 message="Only admins can delete users."
             ).send_error_response()
 
-        # Get the user to be deleted
-        stmt = select(User).where(User.id == user_id)
+        # Get the user with all relationships loaded
+        stmt = (
+            select(User)
+            .options(
+                selectinload(User.folders),
+                selectinload(User.files),
+                selectinload(User.folder_permissions),
+                selectinload(User.file_permissions),
+                selectinload(User.shared_items_sent),
+                selectinload(User.shared_items_received)
+            )
+            .where(User.id == user_id)
+        )
         result = await db.execute(stmt)
         user_to_delete = result.scalars().first()
 
         if not user_to_delete:
-            logger.warning(f"User with ID {user_id} not found")
             return Response(
                 status_code=status.HTTP_404_NOT_FOUND,
-                message=f"User with ID {user_id} not found"
+                message="User not found"
             ).send_error_response()
 
-        # Delete the user
+        # Delete the user (cascades will handle related objects)
         await db.delete(user_to_delete)
         await db.commit()
 
-        logger.info(f"User with ID {user_id} deleted successfully")
         return Response(
-            message=f"User with ID {user_id} deleted successfully",
+            message="User and all associated data deleted successfully",
             status_code=status.HTTP_200_OK
         ).send_success_response()
 

@@ -371,8 +371,12 @@ async def delete_user_service(db, user_id, current_user):
                 message="User not found"
             ).send_error_response()
 
-        # Explicitly delete folders first to ensure proper cascading
+        # First delete all subfolders recursively
         for folder in user_to_delete.folders:
+            # Delete all files in the folder first
+            for file in folder.files:
+                await db.delete(file)
+            # Then delete the folder (subfolders will be deleted due to cascade)
             await db.delete(folder)
 
         # Then delete the user

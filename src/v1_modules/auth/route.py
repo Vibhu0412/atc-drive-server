@@ -7,7 +7,7 @@ from src.v1_modules.auth.crud import  get_current_user_v2
 from src.v1_modules.auth.schema import UserDetailResponse, LoginRequest, RegisterUserRequest, RefreshTokenRequest, \
     ChangePasswordRequest
 from src.v1_modules.auth.services import get_user_details_from_db, login_user, get_all_roles, \
-    register_user, get_all_users, create_refresh_token, change_user_password
+    register_user, get_all_users, create_refresh_token, change_user_password, delete_user_service
 from src.db.dbConnections import get_async_db
 from uuid import UUID
 
@@ -88,4 +88,25 @@ async def change_password(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error changing password: {str(e)}"
+        )
+
+# Add this to route.py
+@auth_router.delete("/delete")
+async def delete_user(
+    user_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: dict = Security(get_current_user_v2)
+):
+    """
+    Delete a user by ID.
+    Only admins can perform this action.
+    """
+    try:
+        return await delete_user_service(db, user_id, current_user)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting user: {str(e)}"
         )

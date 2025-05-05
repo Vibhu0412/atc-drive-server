@@ -353,7 +353,7 @@ async def delete_user_service(db, user_id, current_user):
         stmt = (
             select(User)
             .options(
-                selectinload(User.folders).selectinload(Folder.subfolders),  # Load subfolders recursively
+                selectinload(User.folders).selectinload(Folder.subfolders),
                 selectinload(User.files),
                 selectinload(User.folder_permissions),
                 selectinload(User.file_permissions),
@@ -371,15 +371,15 @@ async def delete_user_service(db, user_id, current_user):
                 message="User not found"
             ).send_error_response()
 
-        # First delete all subfolders recursively
+        # Delete all files first
+        for file in user_to_delete.files:
+            await db.delete(file)
+
+        # Delete all folders (including subfolders due to cascade)
         for folder in user_to_delete.folders:
-            # Delete all files in the folder first
-            for file in folder.files:
-                await db.delete(file)
-            # Then delete the folder (subfolders will be deleted due to cascade)
             await db.delete(folder)
 
-        # Then delete the user
+        # Delete the user
         await db.delete(user_to_delete)
         await db.commit()
 

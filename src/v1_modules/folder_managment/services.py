@@ -357,6 +357,104 @@ class FolderService:
             return user_resources
 
 
+    # Add this new method to FolderService class in services.py
+    @staticmethod
+    async def get_user_folders_for_admin(db, user_id):
+        """Admin-specific method to get folders for a specific user."""
+        storage_manager: S3StorageManager = get_storage_manager()
+        # Get the user object using the provided user_id
+        user_query = select(User).where(User.id == user_id)
+        user_result = await db.execute(user_query)
+        user = user_result.scalar_one_or_none()
+
+        if not user:
+            return {}
+
+        user_resources = {}
+
+        # Get folders for this user
+        folder_permissions_query = select(UserFolderPermission).where(
+            UserFolderPermission.user_id == user.id
+        )
+        folder_permissions_result = await db.execute(folder_permissions_query)
+        folder_permissions = folder_permissions_result.scalars().all()
+
+        # Get files for this user
+        file_permissions_query = select(UserFilePermission).where(
+            UserFilePermission.user_id == user.id
+        )
+        file_permissions_result = await db.execute(file_permissions_query)
+        file_permissions = file_permissions_result.scalars().all()
+
+        # First pass: collect all folder IDs and their parent IDs
+        all_folders = {}
+        parent_child_map = {}
+
+        for permission in folder_permissions:
+            if permission.can_view:
+                folder = await get_folder_with_contents(db, permission.folder_id)
+                if folder:
+                    all_folders[folder["id"]] = folder
+                    if folder["parent_folder_id"] is not None:
+                        if folder["parent_folder_id"] not in parent_child_map:
+                            parent_child_map[folder["parent_folder_id"]] = []
+                        parent_child_map[folder["parent_folder_id"]].append(folder["id"])
+
+        # Second pass: add only top-level folders or folders without accessible parents
+        user_folders = []
+        for folder_id, folder in all_folders.items():
+            parent_id = folder["parent_folder_id"]
+            # Add folder if it's a top-level folder or its parent is not accessible
+            if parent_id is None or parent_id not in all_folders:
+                user_folders.append(folder)
+
+        user_files = []
+        for file_permission in file_permissions:
+            if file_permission.can_view:
+                file_query = select(File).where(File.id == file_permission.file_id)
+                file_result = await db.execute(file_query)
+                file = file_result.scalar_one_or_none()
+                if file:
+                    file_uploaded_by_id = file.uploaded_by_id
+                    permission_user_id = file_permission.user_id
+                    file_path = str(file.file_path).startswith(
+                        (f"folders/user_{file_uploaded_by_id}_root", f"folders/user_{permission_user_id}_root")
+                    )
+                    if user.username == 'admin':
+                        if file_path:
+                            if file_uploaded_by_id == user.id or file_permission.user_id == user.id:
+                                # Generate pre-signed URL for the file
+                                file_url = await storage_manager.generate_presigned_url(file.file_path)
+                                file_response = FileResponse.from_orm(file)
+                                file_response.file_url = file_url
+                                user_files.append(file_response)
+                    elif user.username != 'admin':
+                        if file_path or file.uploaded_by_id != user.id:
+                            folder_permission_query = select(UserFolderPermission).where(
+                                and_(
+                                    UserFolderPermission.folder_id == file.folder_id,
+                                    UserFolderPermission.user_id == user.id,
+                                    UserFolderPermission.can_view == True
+                                )
+                            )
+                            folder_permission_result = await db.execute(folder_permission_query)
+                            folder_permission = folder_permission_result.scalar_one_or_none()
+                            if not folder_permission:
+                                if file_permission.user_id == user.id:
+                                    # Generate pre-signed URL for the file
+                                    file_url = await storage_manager.generate_presigned_url(file.file_path)
+                                    file_response = FileResponse.from_orm(file)
+                                    file_response.file_url = file_url
+                                    user_files.append(file_response)
+
+        if user_folders or user_files:
+            user_resources[user.username] = {
+                "folders": [FolderResponse.from_orm(folder) for folder in user_folders],
+                "files": [FileResponse.from_orm(file) for file in user_files]
+            }
+
+        return user_resources
+
     @staticmethod
     async def download_folder_as_zip(
             db,

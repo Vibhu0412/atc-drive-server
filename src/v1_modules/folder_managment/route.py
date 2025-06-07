@@ -387,3 +387,55 @@ async def delete_file(
             message=str(e),
             data=None
         ).send_error_response()
+
+# Add this new endpoint in route.py
+@folder_router.get("/admin/files")
+async def admin_list_user_files(
+    username: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user_v2),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Admin endpoint to list files and folders for a specific user."""
+    try:
+        # Check if current user is admin
+        user_role = await get_user_role_from_token(db, current_user)
+        if not (user_role and user_role.name == 'admin'):
+            return ResponseBuilder.from_common_response(
+                CommonResponses.unauthorized()
+            ).send_error_response()
+
+        # If username is not provided, return all users' data (original admin behavior)
+        if not username:
+            folders = await FolderService.get_accessible_folders_and_files(db, current_user.id, is_admin=True)
+            return ResponseBuilder.from_common_response(
+                CommonResponses.success(
+                    data=folders,
+                    message="All users' folders retrieved successfully"
+                )
+            ).send_success_response()
+
+        # Fetch the requested user
+        user_query = select(User).where(User.username == username)
+        user_result = await db.execute(user_query)
+        user = user_result.scalar_one_or_none()
+
+        if not user:
+            return ResponseBuilder.from_common_response(
+                CommonResponses.not_found(f"User {username} not found")
+            ).send_error_response()
+
+        # Get folders for this specific user
+        folders = await FolderService.get_user_folders_for_admin(db, user.id)
+        return ResponseBuilder.from_common_response(
+            CommonResponses.success(
+                data=folders,
+                message=f"Folders for user {username} retrieved successfully"
+            )
+        ).send_success_response()
+
+    except Exception as e:
+        return ResponseBuilder(
+            status_code=ResponseStatus.INTERNAL_ERROR,
+            message=str(e),
+            data=None
+        ).send_error_response()

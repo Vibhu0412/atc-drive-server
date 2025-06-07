@@ -307,60 +307,68 @@
             }, 300); // Match this to the CSS transition time
         }
         function fetchFoldersAndFiles() {
-            const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken');
 
-            // Show loading indicator
-            $('#contentArea').html('<div class="loading">Loading your files and folders...</div>');
+    // Show loading indicator
+    $('#contentArea').html('<div class="loading">Loading your files and folders...</div>');
 
-            $.ajax({
-                url: 'http://93.127.137.160/v1/folder/files',
-                type: 'GET',
-                headers: {
-                    'Authorization': 'Bearer ' + token
-                },
-                success: function(response) {
-                    if (response && response.detail) {
-                        usersData = response.detail;
-                        displayUsers();
-                    } else {
-                        // Handle empty or malformed response
-                        usersData = {};
-                        displayUsers(); // This will show our new empty state
-                    }
-                },
-                error: function(xhr, status, error) {
-                    let errorMessage = 'Failed to load data. Please try again.';
-
-                    if (xhr.status === 401) {
-                        // Token expired or invalid
-                        localStorage.removeItem('accessToken');
-                        window.location.href = '../login-module/login.html';
-                        return;
-                    } else if (xhr.status === 404) {
-                        // No data found
-                        usersData = {};
-                        displayUsers(); // Show empty state
-                        return;
-                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
-                        errorMessage = xhr.responseJSON.message;
-                    }
-
-                    showToaster(errorMessage, 'error');
-                    $('#contentArea').html(`
-                        <div class="empty-state">
-                            <div class="empty-icon">
-                                <i class="fas fa-exclamation-triangle"></i>
-                            </div>
-                            <h3>Oops! Something went wrong</h3>
-                            <p>${errorMessage}</p>
-                            <button class="upload-empty-btn" onclick="fetchFoldersAndFiles()">
-                                <i class="fas fa-sync"></i> Retry
-                            </button>
-                        </div>
-                    `);
+    // If we're at the root level, fetch all users
+    if (!currentFolderId && folderHierarchy.length === 0) {
+        fetchAllUsers();
+    } else {
+        // If we're inside a user folder, get that user's files
+        const username = folderHierarchy[0].name;
+        $.ajax({
+            url: `http://93.127.137.160/v1/folder/admin/files?username=${username}`,
+            type: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            },
+            success: function(response) {
+                if (response && response.detail) {
+                    usersData = response.detail;
+                    displayCurrentLevel(username);
+                } else {
+                    // Handle empty or malformed response
+                    usersData = {};
+                    displayCurrentLevel(username);
                 }
-            });
-        }
+            },
+            error: function(xhr, status, error) {
+                handleApiError(xhr, error);
+            }
+        });
+    }
+}
+function handleApiError(xhr, error) {
+    let errorMessage = 'Failed to load data. Please try again.';
+
+    if (xhr.status === 401) {
+        // Token expired or invalid
+        localStorage.removeItem('accessToken');
+        window.location.href = '../login-module/login.html';
+        return;
+    } else if (xhr.status === 404) {
+        // No data found
+        errorMessage = 'No data found';
+    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+        errorMessage = xhr.responseJSON.message;
+    }
+
+    showToaster(errorMessage, 'error');
+    $('#contentArea').html(`
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <h3>Oops! Something went wrong</h3>
+            <p>${errorMessage}</p>
+            <button class="upload-empty-btn" onclick="fetchFoldersAndFiles()">
+                <i class="fas fa-sync"></i> Retry
+            </button>
+        </div>
+    `);
+}
         $('#changePasswordBtn').on('click', function() {
             openChangePasswordModal();
         });
@@ -427,22 +435,24 @@
             });
         });
         function fetchAllUsers() {
-            const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken');
 
-            $.ajax({
-                url: 'http://93.127.137.160/v1/auth/all/users',
-                type: 'GET',
-                headers: {
-                    'Authorization': 'Bearer ' + token
-                },
-                success: function(response) {
-                    allUsers = response.detail;
-                },
-                error: function(xhr, status, error) {
-                    console.error('Failed to fetch users:', error);
-                }
-            });
+    $.ajax({
+        url: 'http://93.127.137.160/v1/auth/all/users',
+        type: 'GET',
+        headers: {
+            'Authorization': 'Bearer ' + token
+        },
+        success: function(response) {
+            allUsers = response.detail;
+            displayUsers();
+        },
+        error: function(xhr, status, error) {
+            console.error('Failed to fetch users:', error);
+            handleApiError(xhr, error);
         }
+    });
+}
 
         function populateUserDropdown(users) {
             const dropdown = document.getElementById('userDropdown');
@@ -618,24 +628,21 @@
     // Hide Upload button when at the users dashboard level
     $('.upload-btn').hide();
 
-    // Check if usersData is empty or undefined
-    if (!usersData || Object.keys(usersData).length === 0) {
+    // Check if allUsers is empty or undefined
+    if (!allUsers || allUsers.length === 0) {
         let content = `
             <div class="empty-state">
                 <div class="empty-icon">
                     <i class="fas fa-users"></i>
                 </div>
-                <h3>No files or folders found</h3>
-                <p>There are no files or folder found in the system.</p>`;
+                <h3>No users found</h3>
+                <p>There are no users found in the system.</p>`;
 
         if (userRole === 'admin') {
             content += `
                 <div class="empty-actions">
-                    <button class="upload-empty-btn" onclick="openFileUploadModal()">
-                        <i class="fas fa-upload"></i> Upload File
-                    </button>
-                    <button class="create-folder-btn" onclick="openFolderUploadModal()">
-                        <i class="fas fa-folder-plus"></i> Create Folder
+                    <button class="add-user-btn" onclick="window.location.href='add_user.html'">
+                        <i class="fas fa-user-plus"></i> Add User
                     </button>
                 </div>`;
         }
@@ -648,42 +655,58 @@
     let content = '<h2 class="section-title">Users</h2>';
     content += '<div class="folder-container">';
 
-    // For fetching user emails from allUsers array
-    const getUserEmail = (username) => {
-        const user = allUsers.find(user => user.username === username);
-        return user ? user.email : '';
-    };
-
-    for (const user in usersData) {
-        const email = getUserEmail(user);
+    // Display each user as a folder
+    allUsers.forEach(user => {
         content += `
-            <div class="folder-item" data-user="${user}" onclick="openUser('${user}')">
+            <div class="folder-item" data-user="${user.username}" onclick="openUser('${user.username}')">
                 <div class="folder-icon"><i class="fas fa-user"></i></div>
                 <div class="folder-info">
-                    <div class="folder-name">${user}</div>
-                    ${email ? `<div class="folder-email">(${email})</div>` : ''}
+                    <div class="folder-name">${user.username}</div>
+                    ${user.email ? `<div class="folder-email">(${user.email})</div>` : ''}
                 </div>
             </div>
         `;
-    }
+    });
 
     content += '</div>';
     $('#contentArea').html(content);
 }
 
-        function openUser(user) {
-            folderHierarchy = [{ id: null, name: user }];
-            currentFolderId = null;
+        function openUser(username) {
+    folderHierarchy = [{ id: null, name: username }];
+    currentFolderId = null;
 
-            // Show Upload button only when inside the admin user folder
-            if (user === 'admin') {
-                $('.upload-btn').show();
+    // Show Upload button only when inside the admin user folder
+    if (username === 'admin') {
+        $('.upload-btn').show();
+    } else {
+        $('.upload-btn').hide();
+    }
+
+    // Fetch files for this specific user
+    const token = localStorage.getItem('accessToken');
+
+    $.ajax({
+        url: `http://93.127.137.160/v1/folder/admin/files?username=${username}`,
+        type: 'GET',
+        headers: {
+            'Authorization': 'Bearer ' + token
+        },
+        success: function(response) {
+            if (response && response.detail) {
+                usersData = response.detail;
+                displayCurrentLevel(username);
             } else {
-                $('.upload-btn').hide();
+                // Handle empty or malformed response
+                usersData = {};
+                displayCurrentLevel(username);
             }
-
-            displayCurrentLevel(user);
+        },
+        error: function(xhr, status, error) {
+            handleApiError(xhr, error);
         }
+    });
+}
 
         // In the navigateToHome() function, we should hide the Upload button again
         function navigateToHome(event) {

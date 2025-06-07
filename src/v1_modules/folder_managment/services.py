@@ -618,11 +618,24 @@ class FileService:
             user_id
     ) -> FileResponse:
         """
-        Upload a file to a specific folder or a default folder if no folder_id is provided.
-        Returns the uploaded file's details as a FileResponse object.
+        Upload a file to a specific folder with improved error handling and validation.
         """
         try:
-            # If folder_id is None, upload to a default folder (e.g., user's root folder)
+            # Validate file before processing
+            if not file or not file.filename:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No file provided or filename is empty"
+                )
+
+            # Check file size (optional - adjust limit as needed)
+            if file.size and file.size > 100 * 1024 * 1024:  # 100MB limit
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="File size exceeds maximum allowed size"
+                )
+
+            # Handle folder logic (your existing code)
             if folder_id is None:
                 default_folder_name = f"user_{user_id}_root"
                 folder_query = select(Folder).where(
@@ -634,7 +647,6 @@ class FileService:
                 folder_result = await db.execute(folder_query)
                 folder = folder_result.scalar_one_or_none()
 
-                # If the default folder doesn't exist, create it
                 if not folder:
                     folder = Folder(
                         name=default_folder_name,
@@ -647,14 +659,13 @@ class FileService:
 
                 folder_id = folder.id
 
-            # Make sure folder_id is not None at this point
             if folder_id is None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="No valid folder_id could be determined"
                 )
 
-            # Fetch the folder from the database using folder_id
+            # Fetch and validate folder (your existing code)
             folder_query = select(Folder).where(Folder.id == folder_id)
             folder_result = await db.execute(folder_query)
             folder = folder_result.scalar_one_or_none()
@@ -665,7 +676,7 @@ class FileService:
                     detail="Folder not found"
                 )
 
-            # Check if the user has permission to upload files to the folder
+            # Check permissions (your existing code)
             permission_query = select(UserFolderPermission).where(
                 and_(
                     UserFolderPermission.folder_id == folder_id,
@@ -682,121 +693,170 @@ class FileService:
                     detail="Insufficient permissions to upload files to this folder"
                 )
 
-            # Use S3StorageManager to store the file in the S3 bucket
+            # Store file with improved error handling
             storage_manager = get_storage_manager()
-
-            # Ensure we're using the correct folder name
             folder_name = folder.name
-            logger.info(f"Uploading file to folder: {folder_name} (ID: {folder_id})")
 
-            # Reset file position to ensure we can read the entire file
+            logger.info(
+                f"Starting upload - File: {file.filename}, Folder: {folder_name} (ID: {folder_id}), User: {user_id}")
+
+            # Reset file position and store
             await file.seek(0)
-            file_key = await storage_manager.store_file(folder_name, file)
 
-            # Create file record
-            new_file = File(
-                filename=file.filename,
-                file_path=file_key,  # Use the S3 file key as the file path
-                folder_id=folder_id,
-                uploaded_by_id=user_id,
-                file_type=file.content_type,
-                file_size=file.size  # Use file.size directly (FastAPI provides this)
-            )
-            db.add(new_file)
-            await db.commit()
-            await db.refresh(new_file)
+            try:
+                file_key = await storage_manager.store_file(folder_name, file)
+                logger.info(f"File stored successfully with key: {file_key}")
+            except Exception as storage_error:
+                logger.error(f"Storage error: {str(storage_error)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to store file: {str(storage_error)}"
+                )
 
-            # Create file permissions for the owner
-            owner_permission = UserFilePermission(
-                user_id=user_id,
-                file_id=new_file.id,
-                can_view=True,
-                can_edit=True,
-                can_delete=True,
-                can_share=True
-            )
-            db.add(owner_permission)
+            # Create database record
+            try:
+                new_file = File(
+                    filename=file.filename,
+                    file_path=file_key,
+                    folder_id=folder_id,
+                    uploaded_by_id=user_id,
+                    file_type=file.content_type,
+                    file_size=file.size
+                )
+                db.add(new_file)
+                await db.commit()
+                await db.refresh(new_file)
 
-            # Create file permissions for the admin
-            admin_user = await get_admin_user(db)
-            if admin_user and user_id != admin_user.id:
-                admin_permission = UserFilePermission(
-                    user_id=admin_user.id,
+                logger.info(f"File record created in database with ID: {new_file.id}")
+
+                # Create file permissions
+                owner_permission = UserFilePermission(
+                    user_id=user_id,
                     file_id=new_file.id,
                     can_view=True,
                     can_edit=True,
                     can_delete=True,
                     can_share=True
                 )
-                db.add(admin_permission)
+                db.add(owner_permission)
 
-            await db.commit()
+                # Add admin permissions if different user
+                admin_user = await get_admin_user(db)
+                if admin_user and user_id != admin_user.id:
+                    admin_permission = UserFilePermission(
+                        user_id=admin_user.id,
+                        file_id=new_file.id,
+                        can_view=True,
+                        can_edit=True,
+                        can_delete=True,
+                        can_share=True
+                    )
+                    db.add(admin_permission)
 
-            logger.info(f"File '{file.filename}' uploaded successfully to folder '{folder_name}' by user '{user_id}'")
+                await db.commit()
 
-            # Return the uploaded file's details as a FileResponse object
-            return FileResponse(
-                id=new_file.id,
-                filename=new_file.filename,
-                file_path=new_file.file_path,
-                folder_id=new_file.folder_id,
-                uploaded_by_id=new_file.uploaded_by_id,
-                uploaded_at=new_file.uploaded_at,
-                file_type=new_file.file_type,
-                file_size=new_file.file_size
-            )
+                logger.info(
+                    f"File '{file.filename}' uploaded successfully to folder '{folder_name}' by user '{user_id}'")
+
+                return FileResponse(
+                    id=new_file.id,
+                    filename=new_file.filename,
+                    file_path=new_file.file_path,
+                    folder_id=new_file.folder_id,
+                    uploaded_by_id=new_file.uploaded_by_id,
+                    uploaded_at=new_file.uploaded_at,
+                    file_type=new_file.file_type,
+                    file_size=new_file.file_size
+                )
+
+            except Exception as db_error:
+                logger.error(f"Database error after successful storage: {str(db_error)}")
+                # Try to clean up the stored file
+                try:
+                    await storage_manager.delete_file(file_key)
+                except:
+                    pass  # Log but don't fail the main error
+                await db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create file record in database"
+                )
 
         except HTTPException as e:
             raise e
-
         except Exception as e:
-            logger.error(f"Error uploading file: {str(e)}")
+            logger.error(f"Unexpected error uploading file: {str(e)}")
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to upload file"
+                detail="Failed to upload file due to unexpected error"
             )
 
     @staticmethod
-    async def download_file(
-        db,
-        file_id,
-        current_user
-    ) :
-        """Generate a pre-signed URL to download a specific file."""
-        # Check if the file exists
-        file_query = select(File).where(File.id == file_id)
-        file_result = await db.execute(file_query)
-        file = file_result.scalar_one_or_none()
+    async def download_file(db, file_id, current_user):
+        """Generate a pre-signed URL with improved error handling and debugging."""
+        try:
+            # Check if the file exists in database
+            file_query = select(File).where(File.id == file_id)
+            file_result = await db.execute(file_query)
+            file = file_result.scalar_one_or_none()
 
-        if not file:
+            if not file:
+                logger.warning(f"File not found in database: {file_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="File not found"
+                )
+
+            logger.info(f"Found file in database: {file.filename}, path: {file.file_path}")
+
+            # Check permissions
+            permission_query = select(UserFilePermission).where(
+                and_(
+                    UserFilePermission.file_id == file_id,
+                    UserFilePermission.user_id == current_user.id,
+                    UserFilePermission.can_view == True
+                )
+            )
+            permission_result = await db.execute(permission_query)
+            permission = permission_result.scalar_one_or_none()
+
+            if not permission and file.uploaded_by_id != current_user.id:
+                logger.warning(f"User {current_user.id} lacks permission to access file {file_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Unauthorized to access this file"
+                )
+
+            # Generate pre-signed URL with better error handling
+            storage_manager = get_storage_manager()
+
+            # Debug: List files in the folder to see what's actually there
+            folder_query = select(Folder).where(Folder.id == file.folder_id)
+            folder_result = await db.execute(folder_query)
+            folder = folder_result.scalar_one_or_none()
+
+            if folder:
+                logger.info(f"Checking files in folder: {folder.name}")
+                files_in_folder = await storage_manager.list_files_in_folder(folder.name)
+                logger.info(f"Files found in S3 folder: {files_in_folder}")
+
+            try:
+                file_url = await storage_manager.generate_presigned_url(file.file_path)
+                logger.info(f"Successfully generated presigned URL for file: {file.filename}")
+                return file_url
+            except Exception as url_error:
+                logger.error(f"Failed to generate presigned URL for {file.file_path}: {str(url_error)}")
+                raise
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error in download_file: {str(e)}")
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="File not found"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate download URL"
             )
-
-        # Check if the user has permission to view the file
-        permission_query = select(UserFilePermission).where(
-            and_(
-                UserFilePermission.file_id == file_id,
-                UserFilePermission.user_id == current_user.id,
-                UserFilePermission.can_view == True
-            )
-        )
-        permission_result = await db.execute(permission_query)
-        permission = permission_result.scalar_one_or_none()
-
-        if not permission and file.uploaded_by_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Unauthorized to access this file"
-            )
-
-        # Generate pre-signed URL
-        storage_manager: S3StorageManager = get_storage_manager()
-        file_url = await storage_manager.generate_presigned_url(file.file_path)
-
-        return file_url
 
     @staticmethod
     async def download_files(

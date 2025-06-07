@@ -828,20 +828,9 @@ class FileService:
                     detail="Unauthorized to access this file"
                 )
 
-            # Generate pre-signed URL with better error handling
-            storage_manager = get_storage_manager()
-
-            # Debug: List files in the folder to see what's actually there
-            folder_query = select(Folder).where(Folder.id == file.folder_id)
-            folder_result = await db.execute(folder_query)
-            folder = folder_result.scalar_one_or_none()
-
-            if folder:
-                logger.info(f"Checking files in folder: {folder.name}")
-                files_in_folder = await storage_manager.list_files_in_folder(folder.name)
-                logger.info(f"Files found in S3 folder: {files_in_folder}")
 
             try:
+                storage_manager: S3StorageManager = get_storage_manager()
                 file_url = await storage_manager.generate_presigned_url(file.file_path)
                 logger.info(f"Successfully generated presigned URL for file: {file.filename}")
                 return file_url
